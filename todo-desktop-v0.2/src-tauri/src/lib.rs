@@ -24,6 +24,11 @@ pub fn run() {
                 .app_data_dir()
                 .expect("无法获取应用数据目录");
             let db = Database::new(app_data_dir.clone());
+            // 修复历史数据：同步 todo_status='completed' 但 status='active' 的任务
+            let fixed = db.sync_completed_status();
+            if fixed > 0 {
+                println!("已修复 {} 条待办的完成状态", fixed);
+            }
             let db_for_reminder = db.clone();
             app.manage(db);
 
@@ -224,6 +229,8 @@ pub fn run() {
             commands::conversation_list,
             commands::conversation_get,
             commands::conversation_delete,
+            // v0.2 数据修复
+            commands::sync_completed_status,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

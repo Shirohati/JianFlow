@@ -318,6 +318,10 @@ export const settingsPage = {
           <button class="btn btn--primary btn--sm" id="importV01AutoBtn">${icon('search', 'size="14"')} 自动导入</button>
         </div>
         <div class="settings-row">
+          <span class="settings-label">修复已完成状态</span>
+          <button class="btn btn--sm" id="syncCompletedBtn">${icon('check-circle', 'size="14"')} 同步完成标记</button>
+        </div>
+        <div class="settings-row">
           <span class="settings-label">清空所有待办</span>
           <button class="btn btn--danger btn--sm" id="resetTasksBtn">${icon('list-x', 'size="14"')} 清空待办</button>
         </div>
@@ -710,6 +714,12 @@ export const settingsPage = {
       a.click();
       URL.revokeObjectURL(url);
       toast.success('数据已导出');
+    });
+
+    document.getElementById('syncCompletedBtn')?.addEventListener('click', async () => {
+      const count = await statsApi.syncCompletedStatus();
+      toast.success(`已同步 ${count} 条待办的完成状态`);
+      if (count > 0) settingsPage.init();
     });
 
     document.getElementById('resetTasksBtn')?.addEventListener('click', async () => {

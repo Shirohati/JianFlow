@@ -878,7 +878,8 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
             if id.is_empty() {
                 return AiToolResult { success: false, message: "缺少 id 参数".into(), data: None };
             }
-            let updates = serde_json::json!({"status": "done", "completed_at": chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()});
+            let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let updates = serde_json::json!({"status": "done", "todo_status": "completed", "completed_at": now});
             let result = db.update_task(id, updates);
             match result {
                 Some(task) => AiToolResult { success: true, message: format!("已完成待办「{}」", task.title), data: Some(serde_json::json!({"id": task.id})) },
@@ -1211,6 +1212,13 @@ pub async fn ai_chat_stream(
 #[tauri::command]
 pub fn persona_list() -> Vec<AiPersona> {
     ai_service::builtin_personas()
+}
+
+// --- 数据修复 ---
+
+#[tauri::command]
+pub fn sync_completed_status(db: State<'_, Database>) -> i32 {
+    db.sync_completed_status()
 }
 
 // --- 对话记录 ---

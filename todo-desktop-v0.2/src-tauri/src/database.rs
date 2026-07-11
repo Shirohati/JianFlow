@@ -1203,4 +1203,27 @@ impl Database {
         if removed { self.save(); }
         removed
     }
+
+    /// 修复历史数据：将 todo_status='completed' 但 status='active' 的任务同步设为 status='done'
+    /// 这修复了之前 UI 勾选只设 todo_status 不设 status 的问题
+    pub fn sync_completed_status(&self) -> i32 {
+        let mut data = self.data.lock().unwrap();
+        let mut count = 0;
+        let now = now_str();
+        for task in data.tasks.iter_mut() {
+            if task.todo_status.as_deref() == Some("completed") && task.status != "done" {
+                task.status = "done".to_string();
+                if task.completed_at.is_none() {
+                    task.completed_at = Some(now.clone());
+                }
+                task.updated_at = now.clone();
+                count += 1;
+            }
+        }
+        drop(data);
+        if count > 0 {
+            self.save();
+        }
+        count
+    }
 }

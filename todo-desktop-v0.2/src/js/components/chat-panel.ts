@@ -279,8 +279,8 @@ export const chatPanel = {
 
     try {
       const todayTasks = await taskApi.list({ todo_date: today });
-      const active = todayTasks.filter((t: any) => t.status === 'active' || t.status === 'pending');
-      const done = todayTasks.filter((t: any) => t.status === 'done');
+      const done = todayTasks.filter((t: any) => t.todo_status === 'completed' || t.status === 'done');
+      const active = todayTasks.filter((t: any) => !(t.todo_status === 'completed' || t.status === 'done'));
       if (todayTasks.length > 0) {
         parts.push(`=== 今日待办 (${today}) ===`);
         parts.push(`未完成 ${active.length} 项，已完成 ${done.length} 项`);
@@ -300,8 +300,8 @@ export const chatPanel = {
     try {
       const yesterdayTasks = await taskApi.list({ todo_date: yesterday });
       if (yesterdayTasks.length > 0) {
-        const d = yesterdayTasks.filter((t: any) => t.status === 'done');
-        const u = yesterdayTasks.filter((t: any) => t.status !== 'done');
+        const d = yesterdayTasks.filter((t: any) => t.todo_status === 'completed' || t.status === 'done');
+        const u = yesterdayTasks.filter((t: any) => !(t.todo_status === 'completed' || t.status === 'done'));
         parts.push(`=== 昨日待办 (${yesterday}) ===`);
         parts.push(`未完成 ${u.length} 项，已完成 ${d.length} 项`);
         if (u.length > 0) {

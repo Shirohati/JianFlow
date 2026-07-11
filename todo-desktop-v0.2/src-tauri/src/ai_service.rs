@@ -506,8 +506,9 @@ pub fn tool_system_prompt() -> String {
 数据语义说明：
 - todo_date：待办分配在哪一天（YYYY-MM-DD），表示这条待办属于该日
 - deadline：截止日期（YYYY-MM-DD），过期会有通知提醒
-- status：全局状态 'active'(进行中) / 'done'(已完成)
-- todo_status：每日完成状态 'pending'(待办) / 'completed'(当日已完成)
+- status：全局生命周期状态 'active'(进行中) / 'done'(已完成)。AI 的 task_complete 工具会设置此字段
+- todo_status：每日完成状态 'pending'(待办) / 'completed'(当日已完成)。前端 UI 的勾选操作设置此字段
+- 注意：已完成的任务可能 status='done' 或 todo_status='completed'，也可能两者都设了。判断待办是否已完成，应检查 todo_status='completed' 或 status='done'
 - category_id：分类ID，常见值: cat_default(其他) cat_study(学习) cat_work(工作) cat_reading(阅读) cat_exercise(运动)
 - priority：优先级（数值越大越优先，0=未设置）
 - note：便签正文或待办备注（支持 markdown 格式）
@@ -544,7 +545,7 @@ pub fn tool_system_prompt() -> String {
 
 5. task_complete — 完成待办
     参数: id (必填)
-    说明: 将待办标记为已完成，设置 status='done' 和 completed_at。
+    说明: 将待办标记为已完成，同时设置 status='done'、todo_status='completed'、completed_at。
     示例: 【TOOL】{"tool":"task_complete","args":{"id":"xxx"}}【/TOOL】
 
 6. task_delete — 删除待办

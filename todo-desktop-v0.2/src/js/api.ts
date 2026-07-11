@@ -202,6 +202,7 @@ export const statsApi = {
   resetTasks: () => invoke<string>('data_reset_tasks'),
   importV01Native: (path: string) => invoke<string>('data_import_v01_native', { path }),
   importV01Auto: () => invoke<string>('data_import_v01_auto'),
+  syncCompletedStatus: () => invoke<number>('sync_completed_status'),
 };
 
 // 活动监测相关类型
