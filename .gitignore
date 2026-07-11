@@ -48,6 +48,13 @@ lerna-debug.log*
 .cargo-lock
 nsis/
 
+# Development docs (local only, not uploaded to GitHub)
+DEVELOPMENT.md
+GIT-WORKFLOW.md
+SPEC-*.md
+**/交接报告.md
+**/docs/
+
 # Environment
 *.local
 .env
