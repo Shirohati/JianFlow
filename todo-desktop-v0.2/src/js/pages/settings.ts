@@ -1,6 +1,6 @@
 import { store } from '../store';
-import { settingsApi, categoryApi, statsApi, timeRecordApi, timeTypeApi, presetApi, goalApi, countdownApi, activityApi, aiApi, reminderApi, personaApi } from '../api';
-import type { AiPersona } from '../api';
+import { settingsApi, categoryApi, statsApi, timeRecordApi, timeTypeApi, presetApi, goalApi, countdownApi, activityApi, aiApi, reminderApi, personaApi, userApi } from '../api';
+import type { AiPersona, UserInsight } from '../api';
 import { initIcons } from '../icons';
 import { toast } from '../components/toast';
 import { modal } from '../components/modal';
@@ -420,6 +420,14 @@ export const settingsPage = {
         <div class="settings-row">
           <span class="settings-label">测试连接</span>
           <button class="btn btn--sm" id="actAiTestBtn">${icon('zap', 'size="14"')} 测试</button>
+        </div>
+        <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:var(--space-2)">
+          <span class="settings-label">用户画像</span>
+          <div style="display:flex;gap:var(--space-2);flex-wrap:wrap">
+            <button class="btn btn--sm" id="userAnalyzeBtn">${icon('brain', 'size="14"')} 分析行为数据</button>
+            <button class="btn btn--sm" id="userInsightsBtn">${icon('eye', 'size="14"')} 查看 AI 对我的了解</button>
+          </div>
+          <div id="userProfileSummary" style="font-size:var(--text-xs);color:var(--text-lighter);padding:var(--space-1)"></div>
         </div>
       </div>
 
@@ -1091,6 +1099,36 @@ export const settingsPage = {
         toast.error('清除失败：' + (err instanceof Error ? err.message : String(err)));
       }
     });
+
+    // 用户画像 - 分析行为数据
+    document.getElementById('userAnalyzeBtn')?.addEventListener('click', async (e) => {
+      const btn = e.target as HTMLElement;
+      const original = btn.innerHTML;
+      btn.innerHTML = '分析中...';
+      btn.setAttribute('disabled', 'true');
+      try {
+        const profile = await userApi.analyze();
+        const summary = document.getElementById('userProfileSummary');
+        if (summary) {
+          const parts: string[] = [];
+          if (profile.total_days_active > 0) parts.push(`活跃 ${profile.total_days_active} 天`);
+          if (profile.average_daily_focus > 0) parts.push(`日均专注 ${profile.average_daily_focus} 分钟`);
+          if (profile.common_categories.length > 0) parts.push(`常用分类：${profile.common_categories.join('、')}`);
+          if (profile.productivity_patterns.length > 0) parts.push(`检测到 ${profile.productivity_patterns.length} 个行为模式`);
+          summary.textContent = parts.length > 0 ? parts.join(' · ') : '暂无足够数据进行分析';
+        }
+        toast.success('行为数据分析完成');
+      } catch (err) {
+        toast.error('分析失败：' + (err instanceof Error ? err.message : String(err)));
+      } finally {
+        btn.innerHTML = original;
+        btn.removeAttribute('disabled');
+        initIcons();
+      }
+    });
+
+    // 用户画像 - 查看 AI 对我的了解
+    document.getElementById('userInsightsBtn')?.addEventListener('click', () => settingsPage.openInsightsModal());
   },
 
   // 刷新监测状态徽章
@@ -1260,5 +1298,84 @@ export const settingsPage = {
         }
       });
     });
+  },
+
+  // 查看 AI 对用户的了解（洞察列表，可删除）
+  async openInsightsModal(): Promise<void> {
+    let insights: UserInsight[] = [];
+    try {
+      insights = await userApi.getInsights();
+    } catch (err) {
+      toast.error('加载洞察失败：' + (err instanceof Error ? err.message : String(err)));
+      return;
+    }
+
+    const typeLabel: Record<string, string> = {
+      preference: '偏好',
+      style: '沟通风格',
+      expertise: '专业领域',
+      pain_point: '痛点',
+      observation: '观察',
+      suggestion: '建议',
+    };
+
+    const sourceLabel: Record<string, string> = {
+      auto_learn: '行为分析',
+      conversation_extract: '对话提取',
+      manual: '手动',
+    };
+
+    const renderRows = (list: UserInsight[]): string => {
+      if (list.length === 0) return '<div style="font-size:var(--text-xs);color:var(--text-lighter);padding:var(--space-2)">暂无洞察记录，多与 AI 对话后会自动学习</div>';
+      return list.map(i => `
+        <div class="insight-item" data-insight-id="${i.id}">
+          <div class="insight-item__head">
+            <span class="insight-item__type">${typeLabel[i.insight_type] || i.insight_type}</span>
+            <span class="insight-item__source">${sourceLabel[i.source] || i.source}</span>
+            <button class="btn btn--ghost btn--sm insight-delete" data-insight-id="${i.id}" title="删除">${icon('trash-2', 'size="12"')}</button>
+          </div>
+          <div class="insight-item__content">${utils.escapeHtml(i.content)}</div>
+          <div class="insight-item__time">${i.created_at?.slice(0, 16) || ''}</div>
+        </div>
+      `).join('');
+    };
+
+    const content = `
+      <div class="insights-modal">
+        <div id="insightsList">${renderRows(insights)}</div>
+        <div style="font-size:var(--text-2xs);color:var(--text-lighter);margin-top:var(--space-2)">
+          AI 会从对话和行为数据中自动学习用户特征。可删除不准确的信息。
+        </div>
+      </div>
+    `;
+
+    modal.open({
+      title: 'AI 对我的了解',
+      content,
+    });
+
+    // 绑定删除按钮
+    const bindDeletes = (): void => {
+      document.querySelectorAll('.insight-delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = (btn as HTMLElement).dataset.insightId!;
+          try {
+            await userApi.deleteInsight(id);
+            insights = insights.filter(i => i.id !== id);
+            const list = document.getElementById('insightsList');
+            if (list) {
+              list.innerHTML = renderRows(insights);
+              initIcons();
+              bindDeletes();
+            }
+            toast.success('已删除');
+          } catch (err) {
+            toast.error('删除失败：' + (err instanceof Error ? err.message : String(err)));
+          }
+        });
+      });
+    };
+    initIcons();
+    bindDeletes();
   },
 };

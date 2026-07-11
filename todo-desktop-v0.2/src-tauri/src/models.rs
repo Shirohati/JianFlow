@@ -220,6 +220,8 @@ pub struct AppData {
     pub memories: Vec<Memory>,
     #[serde(default)]
     pub conversations: Vec<Conversation>,
+    #[serde(default)]
+    pub user_profile: UserProfile,
     pub version: String,
 }
 
@@ -270,6 +272,7 @@ impl Default for AppData {
             daily_scores: Vec::new(),
             memories: Vec::new(),
             conversations: Vec::new(),
+            user_profile: UserProfile::default(),
             version: "0.1.1".into(),
         }
     }
@@ -505,5 +508,38 @@ pub struct Memory {
     pub id: String,
     pub key: String,
     pub content: String,
+    pub created_at: String,
+}
+
+// ===== v0.2 用户画像 =====
+
+/// 用户画像（持久化到 todo-data.json）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct UserProfile {
+    pub preferred_work_hours: Vec<String>,
+    pub common_categories: Vec<String>,
+    pub productivity_patterns: Vec<BehaviorPattern>,
+    pub insights: Vec<UserInsight>,
+    pub last_updated: String,
+    pub total_days_active: i32,
+    pub average_daily_focus: i32,
+}
+
+/// 行为模式
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct BehaviorPattern {
+    pub pattern_type: String,
+    pub description: String,
+    pub confidence: f64,
+    pub detected_at: String,
+}
+
+/// 用户洞察（从对话中提取，或从行为数据推导）
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UserInsight {
+    pub id: String,
+    pub insight_type: String,
+    pub content: String,
+    pub source: String,
     pub created_at: String,
 }

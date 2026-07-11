@@ -1,6 +1,7 @@
 use crate::activity::{ActivityMonitor, ActivityStore};
 use crate::ai_service;
 use crate::database::Database;
+use crate::learning;
 use crate::models::*;
 use crate::reminder::ReminderEngine;
 use serde_json::Value;
@@ -1082,13 +1083,17 @@ pub async fn ai_chat(
         return Err("AI 未启用，请先在设置页配置 AI API".to_string());
     }
 
-    // 第一轮：调用 AI 获取回复（含工具调用）
-    let reply = ai_service::chat_with_tools(
+    // 获取用户画像
+    let profile = db.get_user_profile();
+
+    // 第一轮：调用 AI 获取回复（含工具调用 + 用户画像）
+    let reply = ai_service::chat_with_tools_profile(
         &settings,
         &request.history,
         &request.message,
         &request.page,
         request.page_data.as_deref(),
+        &profile,
     )
     .await?;
 
@@ -1115,7 +1120,7 @@ pub async fn ai_chat(
 
         let followup_msg = format!("以上工具调用的执行结果：\n{}\n\n请根据结果向用户做出最终回复。", tool_summary.join("\n"));
 
-        ai_service::chat(&settings, &followup_history, &followup_msg, &request.page, None).await?
+        ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile).await?
     };
 
     // 保存到对话记录
@@ -1130,6 +1135,27 @@ pub async fn ai_chat(
         updated_at: String::new(),
     };
     db.save_conversation(conv);
+
+    // 异步从对话中提取用户特征（Post-Conversation Extraction）
+    if settings.ai_api_enabled && !settings.ai_api_key.is_empty() {
+        let settings_clone = settings.clone();
+        let history_clone = request.history.clone();
+        let user_msg = request.message.clone();
+        let reply_clone = final_reply.clone();
+        let db_clone = db.inner().clone();
+        tokio::spawn(async move {
+            match learning::extract_from_conversation(&settings_clone, &history_clone, &user_msg, &reply_clone).await {
+                Ok(insights) => {
+                    if !insights.is_empty() {
+                        for insight in insights {
+                            db_clone.add_user_insight(insight);
+                        }
+                    }
+                }
+                Err(_) => {} // 静默失败
+            }
+        });
+    }
 
     Ok(AiChatResponse { session_id: request.session_id, reply: final_reply })
 }
@@ -1147,7 +1173,10 @@ pub async fn ai_chat_stream(
         return Err("AI 未启用，请先在设置页配置 AI API".to_string());
     }
 
-    let messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), true);
+    // 获取用户画像
+    let profile = db.get_user_profile();
+
+    let messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), true, Some(&profile));
 
     let app_token = app.clone();
     let app_reason = app.clone();
@@ -1183,7 +1212,7 @@ pub async fn ai_chat_stream(
 
         let followup_msg = format!("以上工具调用的执行结果：\n{}\n\n请根据结果向用户做出最终回复。", tool_summary.join("\n"));
 
-        ai_service::chat(&settings, &followup_history, &followup_msg, &request.page, None).await?
+        ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile).await?
     };
 
     // 保存到对话记录
@@ -1198,6 +1227,27 @@ pub async fn ai_chat_stream(
         updated_at: String::new(),
     };
     db.save_conversation(conv);
+
+    // 异步从对话中提取用户特征（Post-Conversation Extraction）
+    if settings.ai_api_enabled && !settings.ai_api_key.is_empty() {
+        let settings_clone = settings.clone();
+        let history_clone = request.history.clone();
+        let user_msg = request.message.clone();
+        let reply_clone = final_reply.clone();
+        let db_clone = db.inner().clone();
+        tokio::spawn(async move {
+            match learning::extract_from_conversation(&settings_clone, &history_clone, &user_msg, &reply_clone).await {
+                Ok(insights) => {
+                    if !insights.is_empty() {
+                        for insight in insights {
+                            db_clone.add_user_insight(insight);
+                        }
+                    }
+                }
+                Err(_) => {} // 静默失败
+            }
+        });
+    }
 
     let _ = app.emit("ai-chat-done", serde_json::json!({
         "content": final_reply,
@@ -1273,4 +1323,28 @@ pub fn reminder_status(
     reminder: State<'_, Arc<ReminderEngine>>,
 ) -> bool {
     reminder.is_running()
+}
+
+// --- 用户画像 ---
+
+#[tauri::command]
+pub fn user_get_profile(db: State<'_, Database>) -> UserProfile {
+    db.get_user_profile()
+}
+
+#[tauri::command]
+pub fn user_analyze(db: State<'_, Database>) -> UserProfile {
+    let profile = learning::analyze_user_behavior(&db);
+    db.update_user_profile(profile.clone());
+    profile
+}
+
+#[tauri::command]
+pub fn user_get_insights(db: State<'_, Database>) -> Vec<UserInsight> {
+    db.get_user_insights()
+}
+
+#[tauri::command]
+pub fn user_delete_insight(db: State<'_, Database>, id: String) -> bool {
+    db.delete_user_insight(&id)
 }

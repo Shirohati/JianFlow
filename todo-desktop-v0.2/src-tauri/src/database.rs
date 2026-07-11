@@ -1226,4 +1226,47 @@ impl Database {
         }
         count
     }
+
+    // ---- 用户画像 ----
+
+    pub fn get_user_profile(&self) -> crate::models::UserProfile {
+        let data = self.data.lock().unwrap();
+        data.user_profile.clone()
+    }
+
+    pub fn update_user_profile(&self, profile: crate::models::UserProfile) {
+        let mut data = self.data.lock().unwrap();
+        data.user_profile = profile;
+        data.user_profile.last_updated = now_str();
+        drop(data);
+        self.save();
+    }
+
+    pub fn get_user_insights(&self) -> Vec<crate::models::UserInsight> {
+        let data = self.data.lock().unwrap();
+        data.user_profile.insights.clone()
+    }
+
+    pub fn add_user_insight(&self, insight: crate::models::UserInsight) {
+        let mut data = self.data.lock().unwrap();
+        data.user_profile.insights.push(insight);
+        data.user_profile.last_updated = now_str();
+        drop(data);
+        self.save();
+    }
+
+    pub fn delete_user_insight(&self, id: &str) -> bool {
+        let mut data = self.data.lock().unwrap();
+        let before = data.user_profile.insights.len();
+        data.user_profile.insights.retain(|i| i.id != id);
+        let deleted = data.user_profile.insights.len() < before;
+        if deleted {
+            data.user_profile.last_updated = now_str();
+        }
+        drop(data);
+        if deleted {
+            self.save();
+        }
+        deleted
+    }
 }

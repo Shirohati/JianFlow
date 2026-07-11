@@ -338,6 +338,31 @@ export interface DailyScoreRecord {
   details?: string | null;
 }
 
+export interface BehaviorPattern {
+  pattern_type: string;
+  description: string;
+  confidence: number;
+  detected_at: string;
+}
+
+export interface UserInsight {
+  id: string;
+  insight_type: string;
+  content: string;
+  source: string;
+  created_at: string;
+}
+
+export interface UserProfile {
+  preferred_work_hours: string[];
+  common_categories: string[];
+  productivity_patterns: BehaviorPattern[];
+  insights: UserInsight[];
+  last_updated: string;
+  total_days_active: number;
+  average_daily_focus: number;
+}
+
 export const activityApi = {
   getState: () => invoke<ActivityState>('activity_get_state'),
   start: () => invoke<void>('activity_start'),
@@ -388,6 +413,13 @@ export const conversationApi = {
 
 export const personaApi = {
   list: () => invoke<AiPersona[]>('persona_list'),
+};
+
+export const userApi = {
+  getProfile: () => invoke<UserProfile>('user_get_profile'),
+  analyze: () => invoke<UserProfile>('user_analyze'),
+  getInsights: () => invoke<UserInsight[]>('user_get_insights'),
+  deleteInsight: (id: string) => invoke<boolean>('user_delete_insight', { id }),
 };
 
 export interface StreamCallbacks {

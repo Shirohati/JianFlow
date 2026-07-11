@@ -1,7 +1,7 @@
-import { taskApi, activityApi, goalApi, connectionApi, conversationApi, streamChat, personaApi } from '../api';
+import { taskApi, activityApi, goalApi, connectionApi, conversationApi, streamChat, personaApi, userApi } from '../api';
 import { store } from '../store';
 import { initIcons, getIconHTML } from '../icons';
-import type { AiChatRequest, Conversation, AiPersona } from '../api';
+import type { AiChatRequest, Conversation, AiPersona, UserProfile } from '../api';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -65,6 +65,59 @@ async function loadCurrentPersona(): Promise<void> {
   } catch {
     currentPersona = null;
   }
+}
+
+let userProfile: UserProfile | null = null;
+
+async function loadUserProfile(): Promise<void> {
+  try {
+    userProfile = await userApi.getProfile();
+    renderProfilePanel();
+  } catch {
+    userProfile = null;
+  }
+}
+
+function renderProfilePanel(): void {
+  const el = document.getElementById('chatProfilePanel');
+  if (!el || !userProfile) return;
+
+  const insights = userProfile.insights || [];
+  const recentInsights = insights.slice(-5).reverse();
+
+  el.innerHTML = `
+    <details class="chat-profile-details">
+      <summary>用户画像</summary>
+      <div class="chat-profile-content">
+        ${userProfile.total_days_active > 0 ? `<div class="chat-profile-item">活跃 <strong>${userProfile.total_days_active}</strong> 天</div>` : ''}
+        ${userProfile.average_daily_focus > 0 ? `<div class="chat-profile-item">日均专注 <strong>${userProfile.average_daily_focus}</strong> 分钟</div>` : ''}
+        ${userProfile.common_categories.length > 0 ? `<div class="chat-profile-item">常用分类：${userProfile.common_categories.join('、')}</div>` : ''}
+        ${recentInsights.length > 0 ? `
+          <div class="chat-profile-insights">
+            <div class="chat-profile-insights-title">最近洞察</div>
+            ${recentInsights.map(i => `
+              <div class="chat-profile-insight-item" data-insight-id="${i.id}">
+                <span class="chat-profile-insight-type">${i.insight_type}</span>
+                <span class="chat-profile-insight-content">${escapeHtml(i.content)}</span>
+                <button class="chat-profile-insight-del" data-insight-id="${i.id}" title="删除">×</button>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    </details>
+  `;
+
+  el.querySelectorAll('.chat-profile-insight-del').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = (btn as HTMLElement).dataset.insightId!;
+      try {
+        await userApi.deleteInsight(id);
+        await loadUserProfile();
+      } catch { /* ignore */ }
+    });
+  });
 }
 
 async function switchConversation(id: string): Promise<void> {
@@ -201,6 +254,7 @@ export const chatPanel = {
           <textarea id="chatInput" class="chat-input" placeholder="输入消息..." rows="2"></textarea>
           <button id="chatSendBtn" class="btn btn--primary btn--icon">${getIconHTML('send', { size: '16' })}</button>
         </div>
+        <div id="chatProfilePanel" class="chat-profile-panel"></div>
       </div>
     `;
 
@@ -215,6 +269,8 @@ export const chatPanel = {
     loadConversations();
     // 加载当前人设
     loadCurrentPersona().then(() => updatePersonaDisplay());
+    // 加载用户画像
+    loadUserProfile();
   },
 
   bindEvents(): void {
@@ -256,6 +312,7 @@ export const chatPanel = {
     document.getElementById('chatInput')?.focus();
     loadConversations();
     loadCurrentPersona().then(() => updatePersonaDisplay());
+    loadUserProfile();
   },
 
   close(): void {
@@ -387,6 +444,8 @@ export const chatPanel = {
           this.enableInput();
           renderMsgView();
           loadConversations();
+          // 延迟刷新画像（等待后端提取完成）
+          setTimeout(() => loadUserProfile(), 2000);
         },
         onError: (error) => {
           messages[msgIdx] = { role: 'assistant', content: '抱歉，出了点问题：' + error + '\n\n请检查 AI 配置是否正确。' };

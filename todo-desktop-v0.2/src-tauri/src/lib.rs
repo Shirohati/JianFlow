@@ -2,6 +2,7 @@ mod activity;
 mod ai_service;
 mod commands;
 mod database;
+mod learning;
 mod models;
 mod reminder;
 
@@ -231,6 +232,11 @@ pub fn run() {
             commands::conversation_delete,
             // v0.2 数据修复
             commands::sync_completed_status,
+            // v0.2 用户画像
+            commands::user_get_profile,
+            commands::user_analyze,
+            commands::user_get_insights,
+            commands::user_delete_insight,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
