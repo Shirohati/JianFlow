@@ -218,6 +218,8 @@ pub fn run() {
             commands::reminder_start,
             commands::reminder_stop,
             commands::reminder_status,
+            // v0.2 人设
+            commands::persona_list,
             // v0.2 对话记录
             commands::conversation_list,
             commands::conversation_get,

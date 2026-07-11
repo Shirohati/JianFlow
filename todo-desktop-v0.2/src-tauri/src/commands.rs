@@ -1206,6 +1206,13 @@ pub async fn ai_chat_stream(
     Ok(())
 }
 
+// --- 人设 ---
+
+#[tauri::command]
+pub fn persona_list() -> Vec<AiPersona> {
+    ai_service::builtin_personas()
+}
+
 // --- 对话记录 ---
 
 #[tauri::command]

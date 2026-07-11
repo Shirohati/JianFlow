@@ -4079,3 +4079,47 @@
   pointer-events: none;
   z-index: 400;
 }
+
+/* 人设选择器 */
+.persona-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.persona-card {
+  flex: 1;
+  min-width: 160px;
+  padding: var(--space-3);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  transition: all var(--transition);
+  background: var(--card-bg);
+}
+
+.persona-card:hover {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--card-bg));
+}
+
+.persona-card--active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--card-bg));
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.persona-card__name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--text);
+}
+
+.persona-card__desc {
+  font-size: var(--text-xs);
+  color: var(--text-lighter);
+  line-height: 1.4;
+}

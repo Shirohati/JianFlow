@@ -231,7 +231,17 @@ export interface ActivitySettings {
   ai_system_prompt: string;
   ai_strict_mode: boolean;
   show_thinking: boolean;
+  current_persona_id: string;
   reminder_config: ReminderConfig;
+}
+
+export interface AiPersona {
+  id: string;
+  name: string;
+  description: string;
+  system_prompt: string;
+  greeting: string;
+  is_builtin: boolean;
 }
 
 export interface ReminderConfig {
@@ -373,6 +383,10 @@ export const conversationApi = {
   list: () => invoke<Conversation[]>('conversation_list'),
   get: (id: string) => invoke<Conversation | null>('conversation_get', { id }),
   delete: (id: string) => invoke<boolean>('conversation_delete', { id }),
+};
+
+export const personaApi = {
+  list: () => invoke<AiPersona[]>('persona_list'),
 };
 
 export interface StreamCallbacks {

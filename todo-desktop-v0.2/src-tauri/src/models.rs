@@ -340,6 +340,7 @@ pub struct ActivitySettings {
     pub ai_system_prompt: String,
     pub ai_strict_mode: bool,
     pub show_thinking: bool,
+    pub current_persona_id: String,
     pub reminder_config: ReminderConfig,
 }
 
@@ -357,6 +358,7 @@ impl Default for ActivitySettings {
             ai_system_prompt: String::new(),
             ai_strict_mode: false,
             show_thinking: false,
+            current_persona_id: String::new(),
             reminder_config: ReminderConfig::default(),
         }
     }
@@ -482,6 +484,18 @@ impl Default for ReminderConfig {
             check_interval_min: 30,
         }
     }
+}
+
+// ===== v0.2 AI 人设 =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AiPersona {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub system_prompt: String,
+    pub greeting: String,
+    pub is_builtin: bool,
 }
 
 // ===== 长期记忆 =====

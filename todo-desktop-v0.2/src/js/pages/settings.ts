@@ -1,5 +1,6 @@
 import { store } from '../store';
-import { settingsApi, categoryApi, statsApi, timeRecordApi, timeTypeApi, presetApi, goalApi, countdownApi, activityApi, aiApi, reminderApi } from '../api';
+import { settingsApi, categoryApi, statsApi, timeRecordApi, timeTypeApi, presetApi, goalApi, countdownApi, activityApi, aiApi, reminderApi, personaApi } from '../api';
+import type { AiPersona } from '../api';
 import { initIcons } from '../icons';
 import { toast } from '../components/toast';
 import { modal } from '../components/modal';
@@ -16,6 +17,9 @@ function icon(name: string, attrs: string = ''): string {
 let activitySettings: ActivitySettings | null = null;
 let activityState: ActivityState | null = null;
 let activityBatches: ActivityBatch[] = [];
+
+// 人设列表
+let personaList: AiPersona[] = [];
 
 function activityStatusBadge(state: ActivityState | null, settings: ActivitySettings | null): string {
   if (!settings || !settings.monitor_enabled) {
@@ -65,6 +69,14 @@ export const settingsPage = {
     } catch (err) {
       console.error('activity batches load failed:', err);
       activityBatches = [];
+    }
+
+    // 加载人设列表
+    try {
+      personaList = await personaApi.list();
+    } catch (err) {
+      console.error('persona list load failed:', err);
+      personaList = [];
     }
 
     settingsPage.render(inner, settings, categories, timeTypes, presets, goals, countdowns);
@@ -350,7 +362,7 @@ export const settingsPage = {
         </div>
       </div>
 
-      <div class="settings-section">
+        <div class="settings-section">
         <h3 class="settings-section-title">${icon('sparkles', 'size="14"')} 🤖 AI 分析</h3>
         <div class="settings-row">
           <span class="settings-label">启用 AI 分析</span>
@@ -358,6 +370,18 @@ export const settingsPage = {
             <input type="checkbox" data-act-key="ai_api_enabled" ${activitySettings?.ai_api_enabled ? 'checked' : ''} />
             <span class="settings-toggle-slider"></span>
           </label>
+        </div>
+        <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:var(--space-1)">
+          <span class="settings-label">人设</span>
+          <div class="persona-selector" id="personaSelector">
+            ${personaList.length > 0 ? personaList.map(p => `
+              <label class="persona-card${activitySettings?.current_persona_id === p.id ? ' persona-card--active' : ''}${p.id === 'persona_default' && (!activitySettings?.current_persona_id) ? ' persona-card--active' : ''}" data-persona-id="${p.id}">
+                <input type="radio" name="persona" value="${p.id}" ${activitySettings?.current_persona_id === p.id ? 'checked' : ''}${p.id === 'persona_default' && !activitySettings?.current_persona_id ? 'checked' : ''} style="display:none" />
+                <span class="persona-card__name">${utils.escapeHtml(p.name)}</span>
+                <span class="persona-card__desc">${utils.escapeHtml(p.description)}</span>
+              </label>
+            `).join('') : '<span style="font-size:var(--text-xs);color:var(--text-lighter)">暂无可用人设</span>'}
+          </div>
         </div>
         <div class="settings-row">
           <span class="settings-label">API Base URL</span>
@@ -934,6 +958,29 @@ export const settingsPage = {
 
     // 分类规则管理
     document.getElementById('actRulesBtn')?.addEventListener('click', () => settingsPage.openRulesModal());
+
+    // 人设选择
+    const personaSelector = document.getElementById('personaSelector');
+    if (personaSelector) {
+      personaSelector.querySelectorAll('.persona-card').forEach(card => {
+        card.addEventListener('click', async () => {
+          const id = (card as HTMLElement).dataset.personaId!;
+          // 更新高亮
+          personaSelector.querySelectorAll('.persona-card').forEach(c => c.classList.remove('persona-card--active'));
+          card.classList.add('persona-card--active');
+          (card.querySelector('input') as HTMLInputElement).checked = true;
+          // 保存设置
+          try {
+            activitySettings = await activityApi.updateSettings({ current_persona_id: id } as Partial<ActivitySettings>);
+            store.set('activitySettings', activitySettings);
+            toast.success(`人设已切换为「${(card.querySelector('.persona-card__name') as HTMLElement)?.textContent || ''}」`);
+          } catch (err) {
+            toast.error('保存失败');
+            console.error(err);
+          }
+        });
+      });
+    }
 
     // AI 测试连接
     document.getElementById('actAiTestBtn')?.addEventListener('click', async (e) => {

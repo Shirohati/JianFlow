@@ -1,7 +1,7 @@
-import { taskApi, activityApi, goalApi, connectionApi, conversationApi, streamChat } from '../api';
+import { taskApi, activityApi, goalApi, connectionApi, conversationApi, streamChat, personaApi } from '../api';
 import { store } from '../store';
 import { initIcons, getIconHTML } from '../icons';
-import type { AiChatRequest, Conversation } from '../api';
+import type { AiChatRequest, Conversation, AiPersona } from '../api';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -27,6 +27,7 @@ let messages: ChatMessage[] = [];
 let sessionId = 'session_' + Date.now();
 let conversations: Conversation[] = [];
 let streamingCleanup: (() => void) | null = null;
+let currentPersona: AiPersona | null = null;
 
 function escapeHtml(str: string): string {
   const m: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
@@ -49,6 +50,21 @@ function renderMarkdown(text: string): string {
 async function loadConversations(): Promise<void> {
   try { conversations = await conversationApi.list(); } catch { conversations = []; }
   renderConversationList();
+}
+
+async function loadCurrentPersona(): Promise<void> {
+  const settings = store.get<any>('activitySettings');
+  const personaId = settings?.current_persona_id || '';
+  try {
+    const list = await personaApi.list();
+    if (personaId) {
+      currentPersona = list.find((p: AiPersona) => p.id === personaId) || null;
+    } else {
+      currentPersona = list.find((p: AiPersona) => p.id === 'persona_default') || null;
+    }
+  } catch {
+    currentPersona = null;
+  }
 }
 
 async function switchConversation(id: string): Promise<void> {
@@ -138,6 +154,17 @@ function renderConversationList(): void {
   });
 }
 
+function updatePersonaDisplay(): void {
+  const nameEl = document.getElementById('chatPersonaName');
+  const welcomeEl = document.getElementById('chatWelcomeMsg');
+  if (nameEl) {
+    nameEl.textContent = currentPersona ? currentPersona.name : 'AI 管家';
+  }
+  if (welcomeEl) {
+    welcomeEl.textContent = currentPersona?.greeting || '你好！我是笺流 AI 管家，可以帮你：';
+  }
+}
+
 export const chatPanel = {
   isOpen: false,
   streaming: false,
@@ -149,7 +176,7 @@ export const chatPanel = {
       </div>
       <div id="chatPanel" class="chat-panel" style="display:none">
         <div class="chat-header">
-          <span>${getIconHTML('bot', { size: '16' })} AI 管家</span>
+          <span>${getIconHTML('bot', { size: '16' })} <span id="chatPersonaName">AI 管家</span></span>
           <div class="chat-header-actions">
             <button id="chatNewBtn" class="btn btn--ghost btn--icon" title="新建对话">${getIconHTML('plus', { size: '14' })}</button>
             <button id="chatCloseBtn" class="btn btn--ghost btn--icon">${getIconHTML('x', { size: '16' })}</button>
@@ -161,8 +188,8 @@ export const chatPanel = {
         </div>
         <div class="chat-messages" id="chatMessages">
           <div class="chat-welcome">
-            <p>你好！我是笺流 AI 管家，可以帮你：</p>
-            <ul>
+            <p id="chatWelcomeMsg">你好！我是笺流 AI 管家，可以帮你：</p>
+            <ul id="chatWelcomeList">
               <li>📋 规划每日安排</li>
               <li>📊 分析学习数据</li>
               <li>📝 生成周报总结</li>
@@ -186,6 +213,8 @@ export const chatPanel = {
     initIcons();
     // 加载保存的对话
     loadConversations();
+    // 加载当前人设
+    loadCurrentPersona().then(() => updatePersonaDisplay());
   },
 
   bindEvents(): void {
@@ -226,6 +255,7 @@ export const chatPanel = {
     this.isOpen = true;
     document.getElementById('chatInput')?.focus();
     loadConversations();
+    loadCurrentPersona().then(() => updatePersonaDisplay());
   },
 
   close(): void {

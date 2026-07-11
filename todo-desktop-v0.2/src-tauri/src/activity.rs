@@ -584,6 +584,9 @@ impl ActivityStore {
         if let Some(v) = updates.get("ai_strict_mode").and_then(|v| v.as_bool()) {
             data.settings.ai_strict_mode = v;
         }
+        if let Some(v) = updates.get("current_persona_id").and_then(|v| v.as_str()) {
+            data.settings.current_persona_id = v.to_string();
+        }
         // reminder config
         if let Some(v) = updates.get("idle_reminder_enabled").and_then(|v| v.as_bool()) {
             data.settings.reminder_config.idle_reminder_enabled = v;
