@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="warm">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>笺流 v0.2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/styles/tokens.css" />
+    <link rel="stylesheet" href="/src/styles/base.css" />
+    <link rel="stylesheet" href="/src/styles/components.css" />
+    <link rel="stylesheet" href="/src/styles/pages.css" />
+    <link rel="stylesheet" href="/src/styles/dark.css" />
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <div id="app">
+      <nav class="sidebar">
+        <button class="sidebar-btn active" data-page="home">
+          <i data-lucide="calendar-check" class="sidebar-icon"></i>
+          <span>每日</span>
+        </button>
+        <button class="sidebar-btn" data-page="board">
+          <i data-lucide="layout-grid" class="sidebar-icon"></i>
+          <span>目标板</span>
+        </button>
+        <button class="sidebar-btn" data-page="pomodoro">
+          <i data-lucide="timer" class="sidebar-icon"></i>
+          <span>番茄钟</span>
+        </button>
+        <button class="sidebar-btn" data-page="report">
+          <i data-lucide="bar-chart-3" class="sidebar-icon"></i>
+          <span>报告</span>
+        </button>
+        <button class="sidebar-btn" data-page="daily-report">
+          <i data-lucide="file-text" class="sidebar-icon"></i>
+          <span>每日报告</span>
+        </button>
+        <button class="sidebar-btn" data-page="calendar">
+          <i data-lucide="calendar-days" class="sidebar-icon"></i>
+          <span>日历</span>
+        </button>
+        <button class="sidebar-btn" data-page="settings">
+          <i data-lucide="settings" class="sidebar-icon"></i>
+          <span>设置</span>
+        </button>
+      </nav>
+      <div class="main-content">
+        <div class="page page--active" id="page-home">
+          <div class="page__inner"></div>
+        </div>
+        <div class="page page--board" id="page-board">
+          <div class="page__inner"></div>
+        </div>
+        <div class="page" id="page-pomodoro">
+          <div class="page__inner"></div>
+        </div>
+        <div class="page" id="page-report">
+          <div class="page__inner"></div>
+        </div>
+        <div class="page" id="page-daily-report">
+          <div class="page__inner"></div>
+        </div>
+        <div class="page" id="page-calendar">
+          <div class="page__inner"></div>
+        </div>
+        <div class="page" id="page-settings">
+          <div class="page__inner"></div>
+        </div>
+      </div>
+    </div>
+    <div class="toast-container" id="toastContainer"></div>
+  </body>
+</html>

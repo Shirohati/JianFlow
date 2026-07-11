@@ -1,0 +1,18 @@
+{
+  "name": "learning-todo",
+  "version": "1.0.0",
+  "description": "学习待办 - 桌面应用",
+  "main": "main.js",
+  "author": "Learning Todo",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:portable": "electron-builder --win portable"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0"
+  }
+}

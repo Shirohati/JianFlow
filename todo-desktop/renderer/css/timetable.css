@@ -1,0 +1,40 @@
+.timetable-wrap { position:relative; overflow-x:auto; }
+
+.timetable-grid {
+  display:grid;
+  grid-template-columns:50px repeat(7,1fr);
+  grid-template-rows:32px repeat(12,48px);
+  min-width:600px; position:relative;
+}
+
+.timetable-grid .tt-header {
+  font-size:0.7rem;font-weight:600;color:var(--text-lighter);
+  text-align:center;display:flex;align-items:center;justify-content:center;
+  border-bottom:1px solid var(--border-light);position:sticky;top:0;
+  background:var(--card-bg);z-index:2;
+}
+
+.timetable-grid .tt-hour {
+  font-size:0.62rem;color:var(--text-lighter);text-align:center;
+  display:flex;align-items:flex-start;justify-content:center;padding-top:2px;
+  border-right:1px solid var(--border-light);border-bottom:1px dashed #f0ede7;
+}
+
+.timetable-grid .tt-cell {
+  border-right:1px solid var(--border-light);border-bottom:1px dashed #f0ede7;
+  position:relative;
+}
+
+.tt-block {
+  position:absolute;left:0;right:0;border-radius:3px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:0.6rem;font-weight:600;color:#fff;
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+  padding:2px 4px;z-index:1;cursor:pointer;transition:opacity 0.15s;
+}
+.tt-block:hover{opacity:0.85}
+
+.tt-pause-block {
+  position:absolute;left:0;right:0;
+  background:rgba(255,255,255,0.6);z-index:0;border-radius:2px;
+}

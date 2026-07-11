@@ -1,0 +1,36 @@
+appId: com.learning-todo.app
+productName: 学习待办
+copyright: Copyright © 2024
+
+directories:
+  output: dist
+  buildResources: assets
+
+files:
+  - main.js
+  - preload.js
+  - package.json
+  - src/**/*
+  - renderer/**/*
+  - assets/**/*
+  - node_modules/**/*
+
+win:
+  target:
+    - target: portable
+      arch: [x64]
+  icon: assets/icon.ico
+
+portable:
+  artifactName: LearningTodo.exe
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: LearningTodo-Setup.exe
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: 学习待办
+
+asar: false
+compression: normal

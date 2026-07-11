@@ -1,0 +1,433 @@
+/* ---- 番茄钟页面容器 ---- */
+.pomodoro-full {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 20px;
+  position: relative;
+}
+
+/* ---- 番茄钟信息 ---- */
+.pomodoro-info {
+  text-align: center;
+}
+
+.pomodoro-type-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  opacity: 0.8;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+
+.pomodoro-timer {
+  font-size: 5rem;
+  font-weight: 200;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--pomodoro-timer);
+}
+
+.pomodoro-timer.running {
+  font-weight: 300;
+}
+
+.pomodoro-timer.paused-flash {
+  animation: timerPause 1s ease-in-out infinite;
+}
+
+@keyframes timerPause {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ---- 暂停记录指示 ---- */
+.pomodoro-pause-indicator {
+  font-size: 0.78rem;
+  color: var(--text-lighter);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.pomodoro-pause-indicator.visible {
+  opacity: 1;
+}
+
+/* ---- 格言 ---- */
+.pomodoro-quote {
+  font-size: 0.85rem;
+  color: var(--text-lighter);
+  font-style: italic;
+  max-width: 400px;
+  text-align: center;
+  opacity: 0.7;
+  transition: opacity 0.5s;
+}
+
+/* ---- 倒计时列表（番茄钟页面底部）---- */
+.pomodoro-countdowns {
+  display: flex;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: var(--text-lighter);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pomodoro-countdowns .cd-item {
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  padding: 4px 12px;
+  border-radius: 14px;
+  font-weight: 500;
+}
+
+/* ---- 控制栏 ---- */
+.pomodoro-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pomodoro-controls button {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--card-bg);
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+}
+.pomodoro-controls button:hover {
+  background: var(--bg2);
+}
+.pomodoro-controls .btn-pause {
+  width: 52px;
+  height: 52px;
+  font-size: 1.5rem;
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 4px 14px rgba(91,127,255,0.25);
+}
+.pomodoro-controls .btn-pause:hover {
+  background: var(--primary-hover);
+}
+.pomodoro-controls .btn-stop {
+  background: var(--danger-light);
+  color: var(--danger);
+  border-color: transparent;
+}
+.pomodoro-controls .btn-stop:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ---- 模式切换下拉 ---- */
+.mode-dropdown {
+  position: relative;
+}
+.mode-dropdown .mode-menu {
+  position: absolute;
+  bottom: 48px;
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 100;
+  min-width: 130px;
+}
+.mode-dropdown .mode-menu.open {
+  display: flex;
+}
+.mode-dropdown .mode-menu button {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font);
+}
+.mode-dropdown .mode-menu button:hover {
+  background: var(--bg2);
+}
+
+/* ---- 番茄钟侧边栏（全屏/窗口模式）---- */
+.pomodoro-sidebar {
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 280px;
+  height: 100%;
+  background: var(--card-bg);
+  border-left: 1px solid var(--border-light);
+  padding: 20px 16px;
+  overflow-y: auto;
+  z-index: 50;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pomodoro-sidebar.collapsed {
+  transform: translateX(100%);
+}
+
+.pomodoro-sidebar .sidebar-toggle {
+  position: absolute;
+  left: -32px;
+  top: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--card-bg);
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-light);
+}
+
+/* ---- 预设列表 ---- */
+.preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preset-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  border: 1.5px solid var(--border-light);
+  cursor: pointer;
+  transition: var(--transition);
+  animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.preset-item:hover {
+  box-shadow: var(--shadow);
+  border-color: var(--border);
+}
+.preset-item .preset-color {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.preset-item .preset-info {
+  flex: 1;
+  min-width: 0;
+}
+.preset-item .preset-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.preset-item .preset-meta {
+  font-size: 0.7rem;
+  color: var(--text-lighter);
+}
+.preset-item .preset-start {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid var(--primary);
+  background: var(--primary-light);
+  cursor: pointer;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+.preset-item .preset-start:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ---- 自定义倒计时输入 ---- */
+.custom-timer-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.custom-timer-row input {
+  width: 60px;
+  text-align: center;
+}
+.custom-timer-row .custom-timer-mode {
+  flex: 1;
+}
+
+/* ---- 免打扰锁定提示 ---- */
+.lock-notice {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1.2rem;
+  text-align: center;
+  flex-direction: column;
+  gap: 16px;
+}
+.lock-notice.show {
+  display: flex;
+}
+.lock-notice button {
+  padding: 10px 30px;
+  font-size: 1rem;
+  border-radius: var(--radius);
+  border: 2px solid #fff;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  font-family: var(--font);
+}
+.lock-notice button:hover {
+  background: #fff;
+  color: #000;
+}
+
+/* ---- 小窗独立页面 ---- */
+body.mini-window {
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  -webkit-app-region: drag;
+}
+
+.mini-container {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.mini-container .mini-type {
+  font-size: 0.8rem;
+  font-weight: 600;
+  opacity: 0.7;
+  color: #ccc;
+}
+
+.mini-container .mini-timer {
+  font-size: 2.6rem;
+  font-weight: 200;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  line-height: 1;
+}
+
+.mini-container .mini-pause-badge {
+  font-size: 0.7rem;
+  color: #f0a0a0;
+  animation: timerPause 1s ease-in-out infinite;
+}
+
+/* 小窗右键菜单 */
+.mini-context-menu {
+  position: fixed;
+  background: #2a2a3a;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 4px;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 999;
+  min-width: 140px;
+}
+.mini-context-menu.open {
+  display: flex;
+}
+.mini-context-menu button {
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: #ccc;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font);
+  font-size: 0.78rem;
+  border-radius: 4px;
+}
+.mini-context-menu button:hover {
+  background: #3a3a4a;
+  color: #fff;
+}
+
+/* ---- 背景图支持 ---- */
+.page[data-bg] {
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.page[data-bg]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.15);
+  z-index: 0;
+}
+.page[data-bg] > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- 设置页表单 ---- */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.settings-row label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-light);
+  min-width: 80px;
+}
+.settings-row .hint {
+  font-size: 0.72rem;
+  color: var(--text-lighter);
+}

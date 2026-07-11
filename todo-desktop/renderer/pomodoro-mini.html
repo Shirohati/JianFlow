@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>番茄钟</title>
+<style>
+ *{margin:0;padding:0;box-sizing:border-box}
+ body{
+   font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+   background:#1a1a2e;color:#e0e0e0;height:100vh;overflow:hidden;
+   display:flex;align-items:center;justify-content:center;
+   -webkit-user-select:none;user-select:none;
+   -webkit-app-region:drag;
+   transition:background 0.5s;
+   background-size:contain;background-position:center;background-repeat:no-repeat;
+ }
+ body.has-bg{background-color:#0d0d1a}
+
+ .mini-wrap{
+   display:flex;flex-direction:column;align-items:center;gap:6px;
+   -webkit-app-region:no-drag;
+ }
+
+ .mini-back{
+   position:fixed;top:8px;left:8px;
+   background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);
+   border-radius:6px;color:#aaa;cursor:pointer;font-size:0.65rem;
+   padding:3px 8px;font-family:inherit;opacity:0;transition:opacity 0.3s;
+   -webkit-app-region:no-drag;z-index:10;
+ }
+ body:hover .mini-back{opacity:1}
+
+ .mini-type{font-size:0.8rem;font-weight:600;opacity:0.7}
+ .mini-timer{
+   font-size:clamp(1.8rem, 6vw, 3.2rem);font-weight:200;
+   font-variant-numeric:tabular-nums;color:#fff;line-height:1;
+ }
+ .mini-timer.paused{color:#f0a0a0;animation:timerPulse 1.2s ease-in-out infinite}
+ @keyframes timerPulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+ .mini-ctrls{
+   display:flex;gap:8px;align-items:center;margin-top:4px;
+   -webkit-app-region:no-drag;
+ }
+ .mini-ctrl-btn{
+   width:30px;height:30px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.2);
+   background:rgba(255,255,255,0.06);color:#e0e0e0;cursor:pointer;
+   font-size:0.85rem;display:flex;align-items:center;justify-content:center;
+   transition:all 0.2s;font-family:inherit;
+ }
+ .mini-ctrl-btn:hover{background:rgba(255,255,255,0.14);border-color:rgba(255,255,255,0.4)}
+ .mini-ctrl-btn.pause-btn{width:34px;height:34px;font-size:0.95rem;background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.3)}
+ .mini-ctrl-btn.stop-btn{width:28px;height:28px;font-size:0.75rem}
+ .mini-ctrl-btn.stop-btn:hover{background:rgba(255,80,80,0.3);border-color:rgba(255,80,80,0.5)}
+
+ .mini-ctx{
+   position:fixed;background:#2a2a3a;border:1px solid #444;border-radius:8px;
+   padding:4px;display:none;flex-direction:column;gap:2px;z-index:999;min-width:120px;
+ }
+ .mini-ctx.open{display:flex}
+ .mini-ctx button{
+   width:100%;padding:6px 10px;border:none;background:transparent;
+   color:#ccc;cursor:pointer;text-align:left;font-family:inherit;font-size:0.7rem;border-radius:4px;
+ }
+ .mini-ctx button:hover{background:#3a3a4a;color:#fff}
+ .mini-ctx .ctx-row{display:flex;align-items:center;gap:6px;padding:4px 10px}
+ .mini-ctx .ctx-row span{font-size:0.6rem;color:#888}
+ .mini-ctx .ctx-row input{width:60px;accent-color:#5b7fff}
+</style>
+</head>
+<body>
+<div class="mini-wrap" id="miniWrap">
+  <div class="mini-type" id="miniType">准备开始</div>
+  <div class="mini-timer" id="miniTimer">00:00</div>
+  <div class="mini-ctrls">
+    <button class="mini-ctrl-btn pause-btn" id="miniPause" title="暂停/恢复">⏸</button>
+    <button class="mini-ctrl-btn stop-btn" id="miniStop" title="停止">⏹</button>
+  </div>
+</div>
+<button class="mini-back" id="miniBack">🖥 窗口</button>
+
+<div class="mini-ctx" id="miniCtx">
+  <button id="ctxBackWin">🖥 恢复窗口模式</button>
+  <div style="height:1px;background:#444;margin:2px 0"></div>
+  <div class="ctx-row">
+    <span>透明度</span><input type="range" id="opacitySlider" min="30" max="100" value="100">
+  </div>
+</div>
+
+<script>
+(function(){
+  const API=window.todoAPI;
+  let state=null;
+
+  function fmt(secs){
+    const a=Math.abs(secs),h=Math.floor(a/3600),m=Math.floor((a%3600)/60),s=a%60;
+    return h>0?h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'):String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+  }
+
+  function updateUI(){
+    if(!state)return;
+    document.getElementById('miniType').textContent='🍅 '+state.timeType;
+    document.getElementById('miniType').style.color=state.color;
+    document.getElementById('miniTimer').textContent=fmt(state.totalSeconds);
+    document.getElementById('miniTimer').classList.toggle('paused',state.paused);
+    var pb=document.getElementById('miniPause');
+    if(pb) pb.textContent=state.paused?'▶':'⏸';
+  }
+
+  API.onPomodoroWallpaper((p)=>{body.style.backgroundImage=p?'url(file:///'+p.replace(/\\/g,'/')+')':'';body.classList.toggle('has-bg',!!p);});
+  API.onPomodoroSync((s)=>{state=s;updateUI();});
+
+  document.getElementById('miniBack').addEventListener('click',()=>API.switchPomoMode('window'));
+  document.getElementById('miniPause').addEventListener('click',()=>API.pomodoroPause());
+  document.getElementById('miniStop').addEventListener('click',()=>API.pomodoroStop());
+  document.getElementById('miniWrap').addEventListener('contextmenu',(e)=>{
+    e.preventDefault();
+    const ctx=document.getElementById('miniCtx');
+    ctx.classList.add('open');
+    ctx.style.left=Math.min(e.clientX,window.innerWidth-140)+'px';
+    ctx.style.top=e.clientY+'px';
+  });
+  document.addEventListener('click',(e)=>{
+    const ctx=document.getElementById('miniCtx');
+    if(ctx.classList.contains('open')&&!ctx.contains(e.target))ctx.classList.remove('open');
+  });
+  document.getElementById('ctxBackWin').addEventListener('click',()=>{document.getElementById('miniCtx').classList.remove('open');API.switchPomoMode('window');});
+  document.getElementById('opacitySlider').addEventListener('input',(e)=>API.setMiniOpacity(parseInt(e.target.value)));
+  document.getElementById('miniWrap').addEventListener('dblclick',()=>API.switchPomoMode('window'));
+
+  API.getPomoState().then(s=>{state=s;updateUI();});
+})();
+</script>
+</body>
+</html>

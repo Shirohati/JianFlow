@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="warm">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; media-src 'self' file:; img-src 'self' file: data:;">
+<title>学习待办</title>
+<link rel="stylesheet" href="css/themes.css">
+<link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/timetable.css">
+</head>
+<body>
+<div id="app">
+  <!-- 导航 -->
+  <nav class="sidebar">
+    <button class="sidebar-btn active" data-page="home">📋<span>主页</span></button>
+    <button class="sidebar-btn" data-page="report">📊<span>报告</span></button>
+    <button class="sidebar-btn" data-page="calendar-page">📅<span>日历</span></button>
+    <button class="sidebar-btn" data-page="countdown-page">⏳<span>倒计时</span></button>
+    <button class="sidebar-btn" data-page="settings-page">⚙️<span>设置</span></button>
+  </nav>
+
+  <!-- 内容区 -->
+  <div class="main-content">
+
+    <!-- ========== 主页 ========== -->
+    <div class="page active" id="page-home">
+      <div class="page-inner">
+        <!-- 日期导航 -->
+        <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;padding:10px 16px">
+          <div class="date-nav">
+            <button id="btnPrevDay">◀</button>
+            <span class="date-display today-highlight" id="dateDisplay"></span>
+            <input type="date" id="datePicker" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none">
+            <button id="btnNextDay">▶</button>
+            <button class="btn-today" id="btnToday">📅 今天</button>
+          </div>
+          <span class="study-badge" id="dateStudyBadge">⏱ 0分</span>
+        </div>
+        <!-- 统计条 -->
+        <div class="stats-bar" id="statsBar">
+          <span>📋 总计 <strong id="statTotal">0</strong></span>
+          <span class="stat-pending">⏳ 待完成 <strong id="statPending">0</strong></span>
+          <span class="stat-done">✅ 已完成 <strong id="statDone">0</strong></span>
+        </div>
+
+        <!-- 折叠面板：总体规划 -->
+        <div class="card fold-panel" id="foldMasterPlan">
+          <div class="fold-header" id="foldHeaderPlan">
+            <span class="fold-dot" id="dotPlan"></span>
+            <span class="fold-title">📝 总体规划</span>
+            <span class="fold-arrow" id="arrowPlan">▸</span>
+          </div>
+          <div class="fold-body" id="foldBodyPlan" style="display:none">
+            <textarea id="masterPlan" placeholder="你的长期学习规划…" rows="4"></textarea>
+          </div>
+        </div>
+
+        <!-- 折叠面板：总体心得 -->
+        <div class="card fold-panel" id="foldMasterReflection">
+          <div class="fold-header" id="foldHeaderRef">
+            <span class="fold-dot" id="dotRef"></span>
+            <span class="fold-title">💡 总体心得</span>
+            <span class="fold-arrow" id="arrowRef">▸</span>
+          </div>
+          <div class="fold-body" id="foldBodyRef" style="display:none">
+            <textarea id="masterReflection" placeholder="你的长期学习心得…" rows="4"></textarea>
+          </div>
+        </div>
+
+        <!-- 添加待办 -->
+        <div class="card" style="padding:12px 16px">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input type="text" id="todoInput" placeholder="输入新的学习任务… ✍️" maxlength="200" style="flex:1;min-width:140px">
+            <select id="todoRecurrence" style="font-size:0.75rem;padding:8px 6px;width:auto;min-width:70px">
+              <option value="">不重复</option>
+              <option value="daily">每天</option>
+              <option value="weekly">每周</option>
+              <option value="monthly">每月</option>
+            </select>
+            <button class="btn btn-primary" id="btnAdd" style="width:40px;height:40px;border-radius:50%;font-size:1.3rem;padding:0">+</button>
+            <button class="btn btn-sm" id="btnMigrate" title="将昨天的未完成待办移到今天" style="font-size:0.7rem">📥 迁移</button>
+            <button class="btn btn-sm" id="btnDailyManage" title="管理所有每日重复任务" style="font-size:0.7rem">🔁 每日任务</button>
+          </div>
+        </div>
+
+        <!-- 待办列表 -->
+        <div class="card" id="todoListCard">
+          <ul class="todo-list" id="todoList" style="list-style:none;display:flex;flex-direction:column;gap:4px"></ul>
+          <div class="empty-state" id="emptyState">
+            <span class="empty-icon">🌟</span><p>今天还没有待办事项</p>
+          </div>
+          <div style="text-align:center;margin-top:8px;display:none" id="clearArea">
+            <button class="btn btn-sm" id="btnClearDone">🧹 清除已完成</button>
+          </div>
+        </div>
+
+        <!-- 折叠面板：每日日志 -->
+        <div class="card fold-panel" id="foldDailyLog">
+          <div class="fold-header" id="foldHeaderLog">
+            <span class="fold-dot" id="dotLog"></span>
+            <span class="fold-title">📝 每日日志</span>
+            <span class="fold-arrow" id="arrowLog">▸</span>
+          </div>
+          <div class="fold-body" id="foldBodyLog" style="display:none">
+            <textarea id="dailyLog" placeholder="记录今天的学习心得…" rows="3"></textarea>
+          </div>
+        </div>
+
+        <!-- 番茄钟预设快捷按钮 -->
+        <div class="card" style="padding:12px 16px">
+          <div class="card-title" style="margin-bottom:6px">🍅 快速开始番茄钟</div>
+          <div class="preset-quick-row" id="presetQuickRow"></div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
+            <input type="number" id="quickTimerMin" value="25" min="1" max="480" style="width:56px;text-align:center;font-size:0.78rem;padding:6px 4px" title="自定义分钟">
+            <select id="quickTimerMode" style="font-size:0.78rem;padding:6px 4px">
+              <option value="countdown">倒计时</option>
+              <option value="stopwatch">正向</option>
+            </select>
+            <button class="btn btn-sm btn-primary" id="btnQuickStart">开始</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 学习报告 ========== -->
+    <div class="page" id="page-report">
+      <div class="page-inner">
+        <div class="card">
+          <div class="card-title">📊 课程表周视图</div>
+          <div class="timetable-wrap"><div class="timetable-grid" id="timetableGrid"></div></div>
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+            <button class="btn btn-sm" id="btnTimetablePrev">◀ 上周</button>
+            <button class="btn btn-sm" id="btnTimetableToday">本周</button>
+            <button class="btn btn-sm" id="btnTimetableNext">下周 ▶</button>
+            <span id="timetableRange" style="font-size:0.82rem;font-weight:600"></span>
+          </div>
+        </div>
+
+        <div class="card" style="display:flex;gap:16px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div class="card-title">🍩 时间类型分布</div>
+            <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">
+              <button class="btn btn-sm" id="btnPeriodPrev">◀</button>
+              <button class="btn btn-sm period-btn btn-primary" data-period="day">日</button>
+              <button class="btn btn-sm period-btn" data-period="week">周</button>
+              <button class="btn btn-sm period-btn" data-period="month">月</button>
+              <button class="btn btn-sm period-btn" data-period="all">全部</button>
+              <button class="btn btn-sm" id="btnPeriodNext">▶</button>
+              <span id="periodRange" style="font-size:0.75rem;color:var(--text-light);font-weight:600"></span>
+            </div>
+            <canvas id="pieChart" width="200" height="200"></canvas>
+          </div>
+          <div style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:8px">
+            <div class="card-title">📈 学习数据</div>
+            <div id="statsDataCards" style="display:flex;flex-direction:column;gap:6px;font-size:0.85rem"></div>
+            <div id="periodSummary" style="margin-top:8px;padding:10px;background:rgba(91,127,255,0.08);border-radius:8px;font-size:0.85rem">
+              <div>📅 周期总时长：<strong id="periodTotal" style="color:var(--primary)">0h</strong></div>
+              <div>📊 日均时长：<strong id="periodAvg" style="color:var(--warning)">0h</strong></div>
+              <div>📆 活跃天数：<strong id="periodDays">0</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📊 月度专注时段分布</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+            <button class="btn btn-sm" id="btnHourPrev">◀</button>
+            <span id="hourMonthRange" style="font-size:0.82rem;font-weight:600"></span>
+            <button class="btn btn-sm" id="btnHourNext">▶</button>
+          </div>
+          <canvas id="hourDistChart" height="220"></canvas>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📈 月度时长趋势</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+            <button class="btn btn-sm" id="btnMonthTrendPrev">◀</button>
+            <span id="monthTrendRange" style="font-size:0.82rem;font-weight:600"></span>
+            <button class="btn btn-sm" id="btnMonthTrendNext">▶</button>
+          </div>
+          <canvas id="monthTrendChart" height="220"></canvas>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📅 年度时长趋势</div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+            <button class="btn btn-sm" id="btnYearTrendPrev">◀</button>
+            <span id="yearTrendRange" style="font-size:0.82rem;font-weight:600"></span>
+            <button class="btn btn-sm" id="btnYearTrendNext">▶</button>
+          </div>
+          <canvas id="yearTrendChart" height="220"></canvas>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📐 平均学习时长</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <button class="btn btn-sm avg-btn" data-range="week">本周平均</button>
+            <button class="btn btn-sm avg-btn" data-range="month">本月平均</button>
+            <button class="btn btn-sm avg-btn" data-range="7days">近7天</button>
+            <button class="btn btn-sm avg-btn" data-range="30days">近30天</button>
+            <input type="date" id="avgStart" style="width:124px;font-size:0.76rem" title="自">
+            <span>→</span><input type="date" id="avgEnd" style="width:124px;font-size:0.76rem" title="至">
+            <button class="btn btn-sm btn-primary" id="btnAvgCustom">自定义</button>
+          </div>
+          <div id="avgResult" style="font-size:1.1rem;font-weight:700"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🔥 连续打卡</div>
+          <div id="streakDisplay" style="font-size:1rem;font-weight:600"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 日历 ========== -->
+    <div class="page" id="page-calendar-page">
+      <div class="page-inner">
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <button class="btn btn-sm" id="calPrevMonth">◀</button>
+            <span id="calTitle" style="font-weight:700;font-size:1rem;cursor:pointer">加载中...</span>
+            <button class="btn btn-sm" id="calNextMonth">▶</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:0.7rem;font-weight:600;color:var(--text-lighter);margin-bottom:4px">
+            <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+          </div>
+          <div id="calDaysGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center"></div>
+          <div style="display:flex;align-items:center;gap:4px;font-size:0.62rem;color:var(--text-lighter);justify-content:center;margin-top:8px">
+            <span>少</span>
+            <span style="width:10px;height:10px;border-radius:2px;background:var(--heat-0)"></span>
+            <span style="width:10px;height:10px;border-radius:2px;background:var(--heat-1)"></span>
+            <span style="width:10px;height:10px;border-radius:2px;background:var(--heat-2)"></span>
+            <span style="width:10px;height:10px;border-radius:2px;background:var(--heat-3)"></span>
+            <span style="width:10px;height:10px;border-radius:2px;background:var(--heat-4)"></span>
+            <span style="width:10px;height:10px;border-radius:2px;background:var(--heat-5)"></span>
+            <span style="width:10px;height:10px;border-radius:2px;background:var(--heat-6)"></span>
+            <span>多</span>
+          </div>
+          <div id="calStats" style="display:flex;gap:10px;font-size:0.76rem;color:var(--text-light);justify-content:space-around;margin-top:10px;padding:8px 0;border-top:1px solid var(--border-light)">
+            <span>📊 总计 <strong id="calStatTotal">0h</strong></span>
+            <span>📅 本月 <strong id="calStatMonth">0h</strong></span>
+            <span>📆 本周 <strong id="calStatWeek">0h</strong></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 倒计时 ========== -->
+    <div class="page" id="page-countdown-page">
+      <div class="page-inner">
+        <div class="card">
+          <div class="card-title">⏳ 日期倒计时</div>
+          <div id="countdownList" style="display:flex;flex-direction:column;gap:8px"></div>
+          <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:end">
+            <input type="text" id="cdTitleInput" placeholder="事件名称" style="flex:1;min-width:80px">
+            <input type="date" id="cdDateInput" style="width:130px">
+            <input type="color" id="cdColorInput" value="#5b7fff" style="width:30px;height:30px">
+            <button class="btn btn-primary btn-sm" id="btnAddCountdown">添加</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 设置 ========== -->
+    <div class="page" id="page-settings-page">
+      <div class="page-inner">
+        <div class="card">
+          <div class="card-title">🎨 主题风格</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn theme-btn" data-theme="warm">暖色调</button>
+            <button class="btn theme-btn" data-theme="cool">冷色调</button>
+            <button class="btn theme-btn" data-theme="minimal">简约</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🏷 时间类型管理</div>
+          <div id="timeTypeList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="ttNameInput" placeholder="类型名称" style="flex:1">
+            <input type="color" id="ttColorInput" value="#5b7fff">
+            <button class="btn btn-primary btn-sm" id="btnAddTimeType">添加</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📥 时间导入</div>
+          <details style="margin-bottom:8px">
+            <summary style="cursor:pointer;font-weight:500;margin-bottom:6px">🔹 累加导入（仅总时长）</summary>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select id="importTypeSelect" style="flex:1"></select>
+              <input type="number" id="importTotalMin" placeholder="总分钟数" style="width:100px">
+              <button class="btn btn-primary btn-sm" id="btnBulkImport">导入</button>
+            </div>
+          </details>
+          <details>
+            <summary style="cursor:pointer;font-weight:500;margin-bottom:6px">🔹 逐条导入（含起止时间）</summary>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <input type="date" id="importDateInput" style="width:150px">
+              <div style="display:flex;gap:6px;align-items:center">
+                <select id="importDetailType" style="flex:1"></select>
+                <input type="time" id="importStartTime" style="width:105px" placeholder="开始">
+                <span>→</span><input type="time" id="importEndTime" style="width:105px" placeholder="结束">
+              </div>
+              <button class="btn btn-primary btn-sm" id="btnDetailImport">导入</button>
+            </div>
+          </details>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📜 导入历史</div>
+          <div id="importHistoryList" style="display:flex;flex-direction:column;gap:4px;font-size:0.82rem"></div>
+          <div id="importHistoryEmpty" style="font-size:0.8rem;color:var(--text-lighter)">暂无导入记录</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🎯 每日/每周目标</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <div><label style="font-size:0.8rem">每日（分钟）</label><input type="number" id="goalDaily" value="120" min="0" style="width:70px;text-align:center"></div>
+            <div><label style="font-size:0.8rem">每周（分钟）</label><input type="number" id="goalWeekly" value="600" min="0" style="width:70px;text-align:center"></div>
+            <button class="btn btn-sm btn-primary" id="btnSaveGoals" style="align-self:flex-end">保存</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🔁 待办迁移</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="font-size:0.82rem">自动迁移昨天的未完成项</label>
+            <input type="checkbox" id="autoMigrate" style="width:18px;height:18px">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">💬 格言管理</div>
+          <div id="quoteList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px"></div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="quoteInput" placeholder="输入格言，回车确认" style="flex:1">
+            <button class="btn btn-primary btn-sm" id="btnAddQuote">添加</button>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:8px;font-size:0.8rem">
+            <label>显示：</label><select id="quoteMode"><option value="random">随机</option><option value="rotate">轮播</option></select>
+            <label>间隔：</label><input type="number" id="quoteInterval" value="30" min="5" style="width:54px;text-align:center"><span>秒</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🖼 背景图</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-sm" id="btnBgHome">主页背景</button>
+            <button class="btn btn-sm" id="btnBgPomodoro">番茄钟背景</button>
+            <button class="btn btn-sm" id="btnBgClear">清除</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🔊 背景音文件</div>
+          <button class="btn btn-sm" id="btnAddAudio">添加音频文件</button>
+          <div id="audioList" style="display:flex;flex-direction:column;gap:4px;margin-top:6px;font-size:0.8rem"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📤 数据导出</div>
+          <button class="btn btn-sm" id="btnExportCSV">导出 CSV</button>
+          <button class="btn btn-sm" id="btnExportJSON" style="margin-left:6px">导出 JSON</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🍅 番茄钟预设管理</div>
+          <div id="presetManager" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <select id="presetTypeSelect" style="flex:1;min-width:80px"></select>
+            <input type="number" id="presetDuration" value="25" min="1" style="width:64px;text-align:center">
+            <select id="presetMode"><option value="countdown">倒计时</option><option value="stopwatch">正向</option></select>
+            <input type="color" id="presetColor" value="#5b7fff">
+            <button class="btn btn-primary btn-sm" id="btnAddPreset">添加</button>
+          </div>
+        </div>
+
+        <!-- 预设编辑模态框 -->
+        <div class="modal-overlay" id="presetEditOverlay">
+          <div class="modal-box">
+            <h3>✏️ 编辑预设</h3>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <input type="text" id="presetEditName" placeholder="类型名称">
+              <input type="number" id="presetEditDuration" placeholder="时长（分钟）" min="1">
+              <select id="presetEditMode"><option value="countdown">倒计时</option><option value="stopwatch">正向</option></select>
+              <input type="color" id="presetEditColor" value="#5b7fff">
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn btn-sm" id="btnPresetEditCancel">取消</button>
+                <button class="btn btn-sm btn-primary" id="btnPresetEditSave">保存</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- 每日任务管理弹窗 -->
+<div class="modal-overlay" id="dailyManageOverlay" style="display:none">
+  <div class="modal-content" style="max-width:500px;max-height:80vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="margin:0;font-size:1.1rem">🔁 每日任务管理</h3>
+      <button id="btnCloseDailyManage" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--text-lighter)">✕</button>
+    </div>
+    <p style="font-size:0.8rem;color:var(--text-lighter);margin-bottom:12px">管理所有设置为"每天"重复的任务模板，这些任务会自动出现在每一天。</p>
+    <div id="dailyTaskList" style="display:flex;flex-direction:column;gap:6px"></div>
+    <div id="dailyTaskEmpty" style="display:none;text-align:center;padding:20px;color:var(--text-lighter)">
+      <span style="font-size:1.5rem">📋</span>
+      <p>暂无每日重复任务</p>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js -->
+<script src="lib/chart.min.js"></script>
+
+<!-- JS -->
+<script src="js/utils.js"></script>
+<script src="js/app.js"></script>
+<script src="js/todos.js"></script>
+<script src="js/pomodoro.js"></script>
+<script src="js/daily-log.js"></script>
+<script src="js/calendar.js"></script>
+<script src="js/countdown.js"></script>
+<script src="js/timetable.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/settings.js"></script>
+
+<style>
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+</style>
+</body>
+</html>

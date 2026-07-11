@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>番茄钟</title>
+<style>
+ *{margin:0;padding:0;box-sizing:border-box}
+ body{
+   font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+   background:#1a1a2e;color:#e0e0e0;height:100vh;overflow:hidden;
+   display:flex;flex-direction:column;
+   -webkit-user-select:none;user-select:none;
+   transition:background 0.5s;
+   background-size:contain;background-position:center;background-repeat:no-repeat;
+ }
+ body.has-bg{background-color:#0d0d1a}
+ body.has-bg .type-name,
+ body.has-bg .timer,
+ body.has-bg .pause-ind{text-shadow:0 0 40px rgba(0,0,0,0.85),0 0 15px rgba(0,0,0,0.7),0 2px 4px rgba(0,0,0,0.6)}
+ body.has-bg .ctrl-btn{border-color:rgba(255,255,255,0.3);background:rgba(255,255,255,0.08)}
+ body.has-bg .mode-side-btn{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.2)}
+ body.has-bg .titlebar{background:rgba(0,0,0,0.3)}
+
+ .titlebar{
+   display:flex;align-items:center;justify-content:space-between;height:32px;
+   padding:0 8px;-webkit-app-region:drag;flex-shrink:0;z-index:10;
+ }
+ .titlebar .tb-title{font-size:0.7rem;color:#666;padding-left:4px}
+ .titlebar .tb-close{
+   width:28px;height:28px;border-radius:6px;border:none;background:transparent;
+   cursor:pointer;font-size:0.85rem;color:#888;display:flex;align-items:center;
+   justify-content:center;transition:all 0.15s;-webkit-app-region:no-drag;
+ }
+ .titlebar .tb-close:hover{background:rgba(255,80,80,0.3);color:#faa}
+ .titlebar .tb-min:hover{background:rgba(255,255,255,0.1);color:#ccc}
+
+ .main-area{flex:1;position:relative;overflow:hidden}
+
+ .pomo-wrap{
+   position:absolute;inset:0;
+   display:flex;flex-direction:column;align-items:center;
+   justify-content:center;gap:16px;padding:0 20px 20px;
+   -webkit-app-region:no-drag;
+ }
+ .type-name{font-size:1rem;font-weight:600;opacity:0.85;letter-spacing:0.02em}
+ .timer{font-size:5rem;font-weight:200;font-variant-numeric:tabular-nums;line-height:1;letter-spacing:-0.02em;color:#fff;transition:color 0.3s}
+ .timer.paused{color:#f0a0a0;animation:timerPulse 1.2s ease-in-out infinite}
+ @keyframes timerPulse{0%,100%{opacity:1}50%{opacity:0.4}}
+ .pause-ind{font-size:0.85rem;color:#f0a0a0;display:none;font-weight:500}
+ .pause-ind.show{display:block}
+ .ctrls{display:flex;gap:12px;align-items:center}
+ .ctrl-btn{width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.06);color:#e0e0e0;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;transition:all 0.2s;font-family:inherit}
+ .ctrl-btn:hover{background:rgba(255,255,255,0.14);border-color:rgba(255,255,255,0.4)}
+ .ctrl-btn.pause-btn{width:52px;height:52px;font-size:1.4rem;background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.3)}
+ .ctrl-btn.stop-btn{width:38px;height:38px;font-size:0.9rem}
+ .ctrl-btn.stop-btn:hover{background:rgba(255,80,80,0.3);border-color:rgba(255,80,80,0.5)}
+
+ /* 格言 + 倒计时：独立字幕条 */
+ .quote{
+   font-size:0.95rem;color:#eee;font-style:italic;text-align:center;
+   max-width:380px;line-height:1.6;font-weight:400;
+   background:rgba(0,0,0,0.4);padding:6px 20px;border-radius:20px;
+   display:inline-block;
+ }
+ .cds{display:flex;gap:10px;font-size:0.7rem;flex-wrap:wrap;justify-content:center}
+ .cd-item{
+   background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.12);
+   padding:4px 12px;border-radius:14px;color:#ddd;font-weight:500;
+ }
+
+ /* 模式侧边按钮 - 绝对定位不挤布局 */
+ .mode-side{
+   position:absolute;left:10px;top:50%;transform:translateY(-50%);
+   display:flex;flex-direction:column;gap:6px;padding:8px 4px;
+   z-index:20;border-radius:12px;
+   background:rgba(0,0,0,0.2);
+   -webkit-app-region:no-drag;
+ }
+ .mode-side-btn{
+   width:34px;height:34px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.15);
+   background:rgba(255,255,255,0.04);color:#888;cursor:pointer;
+   font-size:0.82rem;display:flex;align-items:center;justify-content:center;
+   transition:all 0.2s;font-family:inherit;position:relative;
+ }
+ .mode-side-btn:hover{background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.4)}
+ .mode-side-btn.active{background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.5);box-shadow:0 0 8px rgba(255,255,255,0.1)}
+ .mode-side-btn .mode-tip{
+   position:absolute;left:42px;background:#2a2a3a;color:#ccc;
+   font-size:0.62rem;padding:3px 8px;border-radius:4px;white-space:nowrap;
+   pointer-events:none;opacity:0;transition:opacity 0.2s;
+ }
+ .mode-side-btn:hover .mode-tip{opacity:1}
+
+ /* 全屏待办面板 - 毛玻璃 */
+ .fullscreen-todos{
+   position:absolute;right:10px;top:50%;transform:translateY(-50%);
+   width:240px;max-height:70vh;
+   background:rgba(20,20,40,0.55);
+   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+   border:1px solid rgba(255,255,255,0.1);
+   border-radius:14px;padding:14px 12px;
+   display:none;flex-direction:column;gap:8px;
+   z-index:20;overflow-y:auto;transition:all 0.35s cubic-bezier(0.16,1,0.3,1);
+   -webkit-app-region:no-drag;
+ }
+ body.fs-todos-open .fullscreen-todos{display:flex}
+ .fullscreen-todos.collapsed{opacity:0;pointer-events:none;transform:translateY(-50%) translateX(20px)}
+ .fullscreen-todos .todos-title{
+   font-size:0.72rem;font-weight:600;color:rgba(255,255,255,0.6);
+   margin-bottom:2px;text-shadow:0 0 12px rgba(0,0,0,0.7);
+ }
+ .fullscreen-todos .todo-row{
+   font-size:0.78rem;color:rgba(255,255,255,0.85);padding:2px 0;
+   text-shadow:0 0 8px rgba(0,0,0,0.6);
+ }
+ .fullscreen-todos .todo-row.done{color:rgba(255,255,255,0.35);text-decoration:line-through}
+
+ /* 全屏待办浮动按钮 */
+ .todos-toggle-btn{
+   position:absolute;right:10px;top:10px;
+   width:34px;height:34px;border-radius:50%;
+   border:1.5px solid rgba(255,255,255,0.2);
+   background:rgba(0,0,0,0.3);
+   color:#ccc;cursor:pointer;font-size:0.9rem;
+   display:none;align-items:center;justify-content:center;
+   z-index:30;transition:all 0.2s;font-family:inherit;
+ }
+ body.fullscreen .todos-toggle-btn{display:flex}
+ .todos-toggle-btn:hover{background:rgba(255,255,255,0.12);color:#fff}
+
+ /* 免打扰角落暂停按钮 */
+ .kiosk-pause-btn{
+   position:fixed;bottom:20px;right:20px;
+   width:46px;height:46px;border-radius:50%;
+   border:2px solid rgba(255,255,255,0.3);
+   background:rgba(0,0,0,0.4);
+   color:#e0e0e0;cursor:pointer;font-size:1.2rem;
+   display:none;align-items:center;justify-content:center;
+   z-index:100;font-family:inherit;transition:all 0.2s;
+ }
+ body.kiosk .kiosk-pause-btn{display:flex}
+ .kiosk-pause-btn:hover{background:rgba(255,255,255,0.14)}
+
+ /* 小窗 */
+ body.mini{background:transparent;flex-direction:column}
+ body.mini .titlebar{display:none}
+ body.mini .pomo-wrap{gap:4px;padding:0;background:transparent;position:static;inset:auto}
+ body.mini .mode-side{display:none}
+ body.mini .fullscreen-todos{display:none!important}
+ body.mini .todos-toggle-btn{display:none}
+ body.mini .ctrls,.mini .quote,.mini .cds,.mini .pause-ind{display:none!important}
+ body.mini .type-name{font-size:0.75rem}
+ body.mini .timer{font-size:2.4rem;font-weight:200}
+ body.mini .pomo-wrap{-webkit-app-region:drag}
+
+ .mini-ctx{position:fixed;background:#2a2a3a;border:1px solid #444;border-radius:8px;padding:4px;display:none;flex-direction:column;gap:2px;z-index:999;min-width:120px}
+ .mini-ctx.open{display:flex}
+ .mini-ctx button{width:100%;padding:6px 10px;border:none;background:transparent;color:#ccc;cursor:pointer;text-align:left;font-family:inherit;font-size:0.7rem;border-radius:4px}
+ .mini-ctx button:hover{background:#3a3a4a;color:#fff}
+ .mini-ctx .ctx-row{display:flex;align-items:center;gap:6px;padding:4px 10px}
+ .mini-ctx .ctx-row span{font-size:0.6rem;color:#888}
+ .mini-ctx .ctx-row input{width:60px;accent-color:#5b7fff}
+
+ /* 全屏 */
+ body.fullscreen .titlebar{height:24px;opacity:0.3}
+ body.fullscreen .titlebar:hover{opacity:1}
+ body.fullscreen .pomo-wrap{justify-content:flex-start;padding:5vh 5vw 3vh;gap:3vh}
+ body.fullscreen .type-name{font-size:clamp(1.2rem,3vw,2.2rem)}
+ body.fullscreen .timer{font-size:clamp(3rem,12vw,10rem)}
+ body.fullscreen .ctrls{gap:20px}
+ body.fullscreen .ctrl-btn{width:clamp(40px,5vw,56px);height:clamp(40px,5vw,56px)}
+ body.fullscreen .ctrl-btn.pause-btn{width:clamp(50px,6vw,68px);height:clamp(50px,6vw,68px);font-size:clamp(1.2rem,2vw,1.8rem)}
+ body.fullscreen .quote{font-size:clamp(0.9rem,1.5vw,1.2rem)}
+ body.fullscreen .cds{font-size:clamp(0.7rem,1vw,0.9rem)}
+
+ body.kiosk .mode-side{display:none}
+</style>
+</head>
+<body>
+<div class="titlebar">
+  <span class="tb-title">🍅 番茄钟</span>
+  <div style="display:flex;gap:4px;-webkit-app-region:no-drag">
+    <button class="tb-min" id="tbMin" title="最小化" style="width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;font-size:0.9rem;color:#888;display:flex;align-items:center;justify-content:center">—</button>
+    <button class="tb-close" id="tbClose" title="关闭窗口">✕</button>
+  </div>
+</div>
+
+<div class="main-area">
+  <!-- 模式侧边按钮（绝对定位） -->
+  <div class="mode-side" id="modeSide">
+    <button class="mode-side-btn active" data-mode="window" id="mBtnWin" title="窗口">🖥<span class="mode-tip">窗口</span></button>
+    <button class="mode-side-btn" data-mode="fullscreen" id="mBtnFS" title="全屏">📺<span class="mode-tip">全屏</span></button>
+    <button class="mode-side-btn" data-mode="mini" id="mBtnMini" title="小窗">🪟<span class="mode-tip">小窗</span></button>
+    <button class="mode-side-btn" data-mode="kiosk" id="mBtnKiosk" title="免打扰">🔒<span class="mode-tip">免打扰</span></button>
+  </div>
+
+  <!-- 全屏待办浮动按钮 -->
+  <button class="todos-toggle-btn" id="todosToggle" title="展开/收起待办">📋</button>
+
+  <!-- 全屏待办面板（绝对定位，毛玻璃） -->
+  <div class="fullscreen-todos collapsed" id="fsTodosPanel">
+    <div class="todos-title">📋 今日待办</div>
+    <div id="fsTodosList"></div>
+  </div>
+
+  <!-- 主内容 -->
+  <div class="pomo-wrap" id="pomoWrap">
+    <div class="type-name" id="typeName">准备开始</div>
+    <div class="timer" id="timer">00:00</div>
+    <div class="pause-ind" id="pauseInd">⏸ 已暂停</div>
+    <div class="ctrls">
+      <button class="ctrl-btn pause-btn" id="btnPause" title="暂停/恢复">⏸</button>
+      <button class="ctrl-btn stop-btn" id="btnStop" title="停止">⏹</button>
+    </div>
+    <div class="quote" id="quote"></div>
+    <div class="cds" id="cds"></div>
+  </div>
+
+  <!-- 免打扰角落暂停按钮 -->
+  <button class="kiosk-pause-btn" id="kioskPauseBtn" title="暂停/恢复">⏸</button>
+</div>
+
+<div class="mini-ctx" id="miniCtx">
+  <button id="ctxBackWin">🖥 恢复窗口模式</button>
+  <div style="height:1px;background:#444;margin:2px 0"></div>
+  <div class="ctx-row"><span>透明度</span><input type="range" id="opacitySlider" min="30" max="100" value="100"></div>
+</div>
+
+<script>
+(function(){
+  var API=window.todoAPI;
+  var state=null;
+  var quoteIdx=-1,quotes=[],qMode='random',qInterval=30,qTimer=null;
+  var todosOpen=false;
+
+  function fmt(s){
+    var a=Math.abs(s),h=Math.floor(a/3600),m=Math.floor((a%3600)/60),se=a%60;
+    return h>0?h+':'+String(m).padStart(2,'0')+':'+String(se).padStart(2,'0'):String(m).padStart(2,'0')+':'+String(se).padStart(2,'0');
+  }
+
+  function updateUI(){
+    if(!state)return;
+    document.getElementById('typeName').textContent='🍅 '+state.timeType;
+    document.getElementById('typeName').style.color=state.color;
+    document.getElementById('timer').textContent=fmt(state.totalSeconds);
+    var el=document.getElementById('timer'),pi=document.getElementById('pauseInd'),pb=document.getElementById('btnPause'),kpb=document.getElementById('kioskPauseBtn');
+    if(state.paused){el.classList.add('paused');pi.classList.add('show');pb.textContent='▶';kpb.textContent='▶';}
+    else{el.classList.remove('paused');pi.classList.remove('show');pb.textContent='⏸';kpb.textContent='⏸';}
+    document.body.classList.toggle('fullscreen',state.windowMode==='fullscreen');
+    document.body.classList.toggle('kiosk',state.windowMode==='kiosk');
+    updateModeBtns();
+    if(state.windowMode==='fullscreen')loadTodos();
+    else document.body.classList.remove('fs-todos-open');
+  }
+
+  function updateModeBtns(){
+    var m=state?state.windowMode:'window';
+    ['window','fullscreen','mini','kiosk'].forEach(function(k){
+      var b=document.getElementById('mBtn'+k.charAt(0).toUpperCase()+k.slice(1));
+      if(!b)return;
+      b.classList.toggle('active',m===k);
+    });
+  }
+
+  async function loadTodos(){
+    try{
+      var today=new Date().toISOString().split('T')[0];
+      var todos=await API.getTodos(today);
+      var el=document.getElementById('fsTodosList');
+      if(!el)return;
+      if(!todos||todos.length===0){
+        el.innerHTML='<div class="todo-row" style="opacity:0.4">暂无待办</div>';
+        return;
+      }
+      el.innerHTML=todos.map(function(t){
+        var cat=t.category_name||'',catColor=t.category_color||'';
+        var dot=catColor?'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:'+catColor+';margin-right:4px;vertical-align:middle"></span>':'';
+        return '<div class="todo-row'+(t.completed?' done':'')+'">'+dot+(t.completed?'☑':'☐')+' '+t.text.replace(/</g,'&lt;')+'</div>';
+      }).join('');
+    }catch(e){}
+  }
+
+  function toggleTodos(){
+    todosOpen=!todosOpen;
+    if(todosOpen){
+      document.body.classList.add('fs-todos-open');
+      document.getElementById('fsTodosPanel').classList.remove('collapsed');
+    } else {
+      document.getElementById('fsTodosPanel').classList.add('collapsed');
+      setTimeout(function(){document.body.classList.remove('fs-todos-open');},350);
+    }
+  }
+
+  function newQuote(){
+    if(!state||!state.running)return;
+    if(quotes.length===0){document.getElementById('quote').style.display='none';return;}
+    document.getElementById('quote').style.display='';
+    clearTimeout(qTimer);
+    if(qMode==='random')document.getElementById('quote').textContent='「'+quotes[Math.floor(Math.random()*quotes.length)]+'」';
+    else{quoteIdx=(quoteIdx+1)%quotes.length;document.getElementById('quote').textContent='「'+quotes[quoteIdx]+'」';}
+    qTimer=setTimeout(newQuote,qInterval*1000);
+  }
+
+  async function loadMeta(){
+    try{quotes=JSON.parse(await API.getSetting('quotes')||'[]');}catch(e){quotes=[];}
+    if(quotes.length===0)document.getElementById('quote').style.display='none';
+    try{qMode=await API.getSetting('quote_mode')||'random';}catch(e){}
+    try{qInterval=parseInt(await API.getSetting('quote_interval')||'30');}catch(e){}
+    try{
+      var cd=await API.getCountdowns();
+      var el=document.getElementById('cds');
+      if(!cd||cd.length===0){el.style.display='none';}
+      else el.innerHTML=cd.slice(0,5).map(function(c){
+        var d=Math.max(0,Math.floor((new Date(c.target_date).getTime()-Date.now())/86400000));
+        return '<span class="cd-item">⏳ '+c.title.replace(/</g,'&lt;')+': <b>'+d+'</b>天</span>';
+      }).join('');
+    }catch(e){}
+  }
+
+  API.onPomodoroSync(function(s){
+    var wasRunning=state&&state.running&&!state.paused;
+    state=s;
+    updateUI();
+    if(s.running&&!s.paused&&!wasRunning)newQuote();
+    if(!s.running){clearTimeout(qTimer);document.getElementById('quote').style.display='';}
+    document.body.classList.toggle('mini',s.windowMode==='mini');
+    if(s.windowMode!=='fullscreen'){todosOpen=false;document.body.classList.remove('fs-todos-open');document.getElementById('fsTodosPanel').classList.add('collapsed');}
+  });
+
+  API.onPomodoroWallpaper(function(path){
+    if(path){document.body.style.backgroundImage='url(file:///'+path.replace(/\\/g,'/')+')';document.body.classList.add('has-bg');}
+    else{document.body.style.backgroundImage='';document.body.classList.remove('has-bg');}
+  });
+
+  function switchMode(m){
+    if(m==='fullscreen')API.setFullScreen(true);
+    else if(m==='kiosk'){API.setFullScreen(true);API.setKiosk(true);}
+    else{API.setKiosk(false);API.setFullScreen(false);}
+    API.switchPomoMode(m);
+  }
+
+  document.getElementById('btnPause').addEventListener('click',function(){API.pomodoroPause();});
+  document.getElementById('kioskPauseBtn').addEventListener('click',function(){API.pomodoroPause();});
+  document.getElementById('btnStop').addEventListener('click',function(){API.pomodoroStop();});
+  document.getElementById('tbMin').addEventListener('click',function(){API.minimizePomo();});
+  document.getElementById('tbClose').addEventListener('click',function(){API.pomodoroStop();});
+  document.getElementById('todosToggle').addEventListener('click',toggleTodos);
+
+  document.querySelectorAll('.mode-side-btn').forEach(function(b){
+    b.addEventListener('click',function(){switchMode(b.dataset.mode);});
+  });
+
+  document.getElementById('pomoWrap').addEventListener('contextmenu',function(e){
+    if(state&&state.windowMode==='mini'){
+      e.preventDefault();
+      var c=document.getElementById('miniCtx');
+      c.classList.add('open');
+      c.style.left=Math.min(e.clientX,window.innerWidth-140)+'px';
+      c.style.top=e.clientY+'px';
+    }
+  });
+  document.addEventListener('click',function(e){
+    var c=document.getElementById('miniCtx');
+    if(c.classList.contains('open')&&!c.contains(e.target))c.classList.remove('open');
+  });
+  document.getElementById('ctxBackWin').addEventListener('click',function(){
+    document.getElementById('miniCtx').classList.remove('open');switchMode('window');
+  });
+  document.getElementById('opacitySlider').addEventListener('input',function(e){API.setMiniOpacity(parseInt(e.target.value));});
+  document.getElementById('pomoWrap').addEventListener('dblclick',function(){
+    if(state&&state.windowMode==='mini')switchMode('window');
+  });
+
+  document.addEventListener('keydown',function(e){
+    if(state&&state.windowMode==='kiosk'){
+      if(e.key==='Escape'){e.preventDefault();return;}
+      if(e.key===' '&&state.running){e.preventDefault();API.pomodoroPause();return;}
+      if(e.key==='F11'||e.altKey||(e.ctrlKey&&e.key==='Tab')){e.preventDefault();return;}
+    }
+  });
+
+  loadMeta();
+  API.getPomoState().then(function(s){state=s;updateUI();if(s.running&&!s.paused)newQuote();});
+})();
+</script>
+</body>
+</html>
