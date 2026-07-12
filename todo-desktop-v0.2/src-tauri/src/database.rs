@@ -1269,4 +1269,68 @@ impl Database {
         }
         deleted
     }
+
+    // ---- 报告 ----
+
+    pub fn get_reports(&self, start_date: &str, end_date: &str) -> Vec<crate::models::DailyReport> {
+        let data = self.data.lock().unwrap();
+        let sd = start_date.to_string();
+        let ed = end_date.to_string();
+        data.reports.iter()
+            .filter(|r| r.date >= sd && r.date <= ed)
+            .cloned()
+            .collect()
+    }
+
+    pub fn get_reports_by_type(&self, report_type: &str) -> Vec<crate::models::DailyReport> {
+        let data = self.data.lock().unwrap();
+        data.reports.iter()
+            .filter(|r| r.report_type == report_type)
+            .cloned()
+            .collect()
+    }
+
+    pub fn get_reports_by_date(&self, date: &str) -> Vec<crate::models::DailyReport> {
+        let data = self.data.lock().unwrap();
+        data.reports.iter()
+            .filter(|r| r.date == date)
+            .cloned()
+            .collect()
+    }
+
+    pub fn add_report(&self, report: crate::models::DailyReport) {
+        let mut data = self.data.lock().unwrap();
+        data.reports.push(report);
+        drop(data);
+        self.save();
+    }
+
+    // ---- 目标板 ----
+
+    pub fn get_board_data(&self) -> crate::models::BoardData {
+        let data = self.data.lock().unwrap();
+        let notes: Vec<crate::models::TaskItem> = data.tasks.iter()
+            .filter(|t| t.grid_x.is_some() && t.grid_y.is_some())
+            .cloned()
+            .collect();
+        crate::models::BoardData {
+            notes,
+            connections: data.connections.clone(),
+        }
+    }
+
+    // ---- 用户画像扩展 ----
+
+    pub fn update_user_profile_json(&self, profile_json: &str) {
+        let mut data = self.data.lock().unwrap();
+        data.user_profile.profile_json = Some(profile_json.to_string());
+        data.user_profile.last_updated = now_str();
+        drop(data);
+        self.save();
+    }
+
+    pub fn get_user_profile_json(&self) -> Option<String> {
+        let data = self.data.lock().unwrap();
+        data.user_profile.profile_json.clone()
+    }
 }

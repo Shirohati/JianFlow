@@ -24,6 +24,7 @@ parent_id：看板子任务指向父便签；重复子任务指向模板
 board_tab：便签标签页名（目标板多 tab）
 group_id：便签分组 ID（目标板分组折叠）
 collapsed：分组是否折叠
+schedule_start / schedule_end：任务在时间轴（首页右侧纵向日程栏）上的起止时间，格式 HH:MM。设置了这两个字段的任务会出现在首页侧边栏的时间轴上。
 
 【分类 Category】
 每个待办有一个 category_id，对应分类的 id。
@@ -312,13 +313,53 @@ pub async fn call_ai_api_simple(settings: &ActivitySettings, messages: &[Convers
 
 /// 构建人设动态补充 prompt（根据用户画像）
 pub fn build_persona_dynamic_prompt(profile: &UserProfile, persona_id: &str) -> String {
-    if profile.total_days_active == 0 && profile.insights.is_empty() {
-        return String::new();
-    }
-
     let user_term = if persona_id == "persona_ling" { "老爷" } else { "用户" };
 
     let mut lines = vec![format!("\n\n== 你对{}的了解 ==", user_term)];
+
+    // 注入 profile_json（初始化问卷数据：身份、目标、科目、教辅、进度等）
+    if let Some(ref pj) = profile.profile_json {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(pj) {
+            if let Some(identity) = v.get("identity").and_then(|x| x.as_str()).filter(|x| !x.is_empty()) {
+                lines.push(format!("- {}的身份：{}", user_term, identity));
+            }
+            if let Some(target) = v.get("target").and_then(|x| x.as_str()).filter(|x| !x.is_empty()) {
+                lines.push(format!("- {}的目标：{}", user_term, target));
+            }
+            if let Some(subjects) = v.get("subjects").and_then(|x| x.as_array()) {
+                let subs: Vec<&str> = subjects.iter().filter_map(|x| x.as_str()).collect();
+                if !subs.is_empty() {
+                    lines.push(format!("- {}的学习/工作科目：{}", user_term, subs.join("、")));
+                }
+            }
+            if let Some(progress) = v.get("progress").and_then(|x| x.as_str()).filter(|x| !x.is_empty()) {
+                lines.push(format!("- {}当前进度：{}", user_term, progress));
+            }
+            if let Some(materials) = v.get("materials").and_then(|x| x.as_array()) {
+                let mats: Vec<&str> = materials.iter().filter_map(|x| x.as_str()).collect();
+                if !mats.is_empty() {
+                    lines.push(format!("- {}使用的教辅/课程/资料：{}", user_term, mats.join("、")));
+                }
+            }
+            if let Some(hours) = v.get("daily_hours").and_then(|x| x.as_f64()) {
+                if hours > 0.0 {
+                    lines.push(format!("- {}每日可投入：{} 小时", user_term, hours));
+                }
+            }
+            if let Some(weakness) = v.get("weakness").and_then(|x| x.as_array()) {
+                let wk: Vec<&str> = weakness.iter().filter_map(|x| x.as_str()).collect();
+                if !wk.is_empty() {
+                    lines.push(format!("- {}的弱项/待加强：{}", user_term, wk.join("、")));
+                }
+            }
+            if let Some(rest) = v.get("rest_days").and_then(|x| x.as_array()) {
+                let rd: Vec<&str> = rest.iter().filter_map(|x| x.as_str()).collect();
+                if !rd.is_empty() {
+                    lines.push(format!("- {}固定休息日：{}", user_term, rd.join("、")));
+                }
+            }
+        }
+    }
 
     if profile.total_days_active > 0 {
         lines.push(format!("- {}最近活跃天数：{} 天", user_term, profile.total_days_active));
@@ -366,6 +407,14 @@ pub fn build_persona_dynamic_prompt(profile: &UserProfile, persona_id: &str) -> 
         }
     }
 
+    // 如果 profile_json 存在（用户已初始化），在最后加一个主动更新说明
+    if profile.profile_json.is_some() {
+        lines.push(String::new());
+        lines.push(format!("如果你发现{}的教辅资料、学习进度、目标等关键信息已经变化，", user_term));
+        lines.push(format!("主动用更新后的信息修正上述画像，并存到记忆中。"));
+        lines.push(format!("如果{}告诉你换了习题册或调整了计划，记住并在后续规划中沿用。", user_term));
+    }
+
     lines.join("\n")
 }
 
@@ -393,6 +442,29 @@ pub async fn chat_with_tools_profile(
 ) -> Result<String, String> {
     let messages = build_messages(settings, history, message, page, page_data, true, Some(profile));
     call_ai_api(settings, &messages).await
+}
+
+/// 根据 skill 名称获取对应的 system prompt
+pub fn get_skill_prompt(skill_name: &str) -> Option<String> {
+    match skill_name {
+        "init" => Some(crate::skills::init::init_skill_prompt()),
+        "evening" => Some(crate::skills::evening::evening_skill_prompt()),
+        "morning" => Some(crate::skills::morning::morning_skill_prompt()),
+        "report" => Some(crate::skills::report::report_skill_prompt()),
+        "board" => Some(crate::skills::board::board_enhancement_prompt()),
+        _ => None,
+    }
+}
+
+/// 检测消息中是否包含 skill 触发命令
+pub fn detect_skill_command(message: &str) -> Option<String> {
+    if message.starts_with("/skill ") {
+        let name = message.trim_start_matches("/skill ").trim().to_string();
+        if matches!(name.as_str(), "init" | "evening" | "morning" | "report" | "board") {
+            return Some(name);
+        }
+    }
+    None
 }
 
 pub fn build_messages(
@@ -431,6 +503,25 @@ pub fn build_messages(
 
     // 注入项目数据说明，让 AI 理解业务语义
     messages.push(ConversationMessage { role: "system".into(), content: domain_context_prompt() });
+
+    // 如果检测到 skill 命令，注入对应的 skill prompt
+    if let Some(skill_name) = detect_skill_command(message) {
+        if let Some(skill_prompt) = get_skill_prompt(&skill_name) {
+            messages.push(ConversationMessage { role: "system".into(), content: skill_prompt });
+        }
+        // 如果是 board skill，也注入 board 增强 prompt
+        if skill_name == "board" {
+            if let Some(board_prompt) = get_skill_prompt("board") {
+                messages.push(ConversationMessage { role: "system".into(), content: board_prompt });
+            }
+        }
+    } else if let Some(skill_name) = history.iter().find_map(|m| detect_skill_command(&m.content)) {
+        // 非 skill 命令但历史中有 skill 触发（如表单提交后的【FORM_DATA】），
+        // 同样注入 skill prompt 让 AI 知道如何继续处理
+        if let Some(skill_prompt) = get_skill_prompt(&skill_name) {
+            messages.push(ConversationMessage { role: "system".into(), content: skill_prompt });
+        }
+    }
 
     if enable_tools {
         messages.push(ConversationMessage { role: "system".into(), content: tool_system_prompt() });
@@ -592,6 +683,7 @@ pub fn tool_system_prompt() -> String {
 - board_tab：看板标签页名
 - group_id：看板分组ID，用于将多个便签分在一组
 - recurrence：重复规则 'daily'/'weekly'/'monthly'，会定期生成新待办
+- schedule_start / schedule_end：任务在时间轴上的起止时间（格式 HH:MM）。设置了这两个字段的任务会出现在首页右侧的纵向日程时间轴上。晨间规划时每个任务都应该设置 schedule_start/schedule_end。
 
 支持的工具有：
 
@@ -601,22 +693,27 @@ pub fn tool_system_prompt() -> String {
     参数: status (可选: "active","done"), todo_date (可选, 如 "2026-07-11"),
           category_id (可选), keyword (可选, 标题关键词)
     示例: 【TOOL】{"tool":"task_list","args":{"todo_date":"2026-07-11"}}【/TOOL】
-    说明: 不传任何参数则列出所有待办。返回每个任务的 id/title/status/todo_date/deadline。
+    说明: 不传任何参数则列出所有待办。返回每个任务的 id/title/status/todo_date/deadline/schedule_start/schedule_end。
 
 2. task_get — 查看待办详情
     参数: id (必填)
     示例: 【TOOL】{"tool":"task_get","args":{"id":"xxx"}}【/TOOL】
-    说明: 返回完整待办信息，包括 title/status/category_id/priority/todo_date/deadline/note/content。
+    说明: 返回完整待办信息，包括 title/status/category_id/priority/todo_date/deadline/note/content/schedule_start/schedule_end。
 
 3. task_create — 创建待办
     参数: title (必填), category_id (可选, 默认 cat_default), priority (可选, 默认0),
           deadline (可选, 格式 YYYY-MM-DD), note (可选, markdown备注),
-          todo_date (可选, 格式 YYYY-MM-DD, 默认今天)
-    示例: 【TOOL】{"tool":"task_create","args":{"title":"读《原子习惯》第3章","category_id":"cat_reading","priority":2,"todo_date":"2026-07-11"}}【/TOOL】
+          todo_date (可选, 格式 YYYY-MM-DD, 默认今天),
+          schedule_start (可选, 格式 HH:MM, 如 "09:00"), 
+          schedule_end (可选, 格式 HH:MM, 如 "10:30"),
+          type (可选, 默认 "todo", 纯时间块用 "note")
+    示例: 【TOOL】{"tool":"task_create","args":{"title":"读《原子习惯》第3章","category_id":"cat_reading","priority":2,"todo_date":"2026-07-11","schedule_start":"09:00","schedule_end":"10:00"}}【/TOOL】
+    说明: schedule_start/schedule_end 设置后，任务会出现在首页右侧的时间轴（日程）上。
 
 4. task_update — 修改待办
-    参数: id (必填), 可改 title/status/priority/deadline/note/category_id/todo_date
+    参数: id (必填), 可改 title/status/priority/deadline/note/category_id/todo_date/schedule_start/schedule_end
     示例: 【TOOL】{"tool":"task_update","args":{"id":"xxx","title":"新标题"}}【/TOOL】
+    说明: 修改 schedule_start/schedule_end 可以调整任务在时间轴上的位置。
 
 5. task_complete — 完成待办
     参数: id (必填)
@@ -659,25 +756,52 @@ pub fn tool_system_prompt() -> String {
     参数: from_id (必填), to_id (必填)
     示例: 【TOOL】{"tool":"connection_delete","args":{"from_id":"id1","to_id":"id2"}}【/TOOL】
 
+13. board_read — 读取目标板数据
+    参数: 无
+    说明: 读取画布上所有便签和连接线，了解用户的整体学习路线图/计划框架。
+          返回便签（带 grid_x/grid_y 的条目）和连线列表。
+    示例: 【TOOL】{"tool":"board_read","args":{}}【/TOOL】
+
 === 长期记忆 ===
 
-13. memory_search — 搜索关于用户的信息
+14. memory_search — 搜索关于用户的信息
     参数: keyword (必填), 搜索关键词
     说明: 当用户问「你还记得我之前说的吗」或需要回忆以前聊过的内容时，用此工具查找。
     示例: 【TOOL】{"tool":"memory_search","args":{"keyword":"学习计划"}}【/TOOL】
 
-14. memory_save — 记住用户告诉你的重要信息（只在用户明确要求时使用）
+15. memory_save — 记住用户告诉你的重要信息（只在用户明确要求时使用）
     参数: key (必填, 简短标签), content (必填, 内容)
     说明: 只有用户说「记住这个」或明确要求你记住时才用。不要自作主张。
     示例: 【TOOL】{"tool":"memory_save","args":{"key":"学习目标","content":"用户目标是每天学习4小时"}}【/TOOL】
 
-15. memory_list — 列出所有的记忆
+16. memory_list — 列出所有的记忆
     参数: 无
     示例: 【TOOL】{"tool":"memory_list","args":{}}【/TOOL】
 
-16. memory_delete — 删除记忆
+17. memory_delete — 删除记忆
     参数: id (必填)
     示例: 【TOOL】{"tool":"memory_delete","args":{"id":"xxx"}}【/TOOL】
+
+=== 报告查询 ===
+
+18. report_list — 按日期范围读取报告
+    参数: start_date (必填, 格式 YYYY-MM-DD), end_date (必填, 格式 YYYY-MM-DD)
+    说明: 读取指定日期范围内的所有报告（晚间总结/周报/月报），用于生成新报告时的参考。
+    示例: 【TOOL】{"tool":"report_list","args":{"start_date":"2026-06-01","end_date":"2026-07-11"}}【/TOOL】
+
+=== 用户画像更新 ===
+
+19. profile_update — 更新用户画像的关键信息
+    参数: key (必填, 要更新的字段), value (必填, 新值)
+    说明: 当用户告知你以下变化时，主动用此工具更新：
+          - 换了教辅/习题册 → key="materials", value="《880》《660》"
+          - 进度变了 → key="progress", value="冲刺阶段"
+          - 目标变了 → key="target", value="考南大计算机"
+          - 身份变了 → key="identity", value="考研二战"
+          - 每天可投入时间变了 → key="daily_hours", value="8"
+          - 弱项变了 → key="weakness", value="线代, 英语阅读"
+          - 其他 → 选择最接近的 key
+    示例: 【TOOL】{"tool":"profile_update","args":{"key":"materials","value":"《880》《660》"}}【/TOOL】
 
 使用建议：
 - 用户问「今天有哪些待办」→ 用 task_list({todo_date: "今天日期"}) 列出所有今天的待办
@@ -687,6 +811,10 @@ pub fn tool_system_prompt() -> String {
 - 用户问「今天有什么截止」→ 用 task_list 获取今天待办，检查 deadline 字段
 - 用户问「我的番茄钟目标」→ 用 goal_set 查看或修改每日/每周目标
 - 用户问「你能记住吗」→ 如果涉及保存信息用 memory_save，查找已存信息用 memory_search
+- 用户告知换了教辅或进度变化 → 用 profile_update 更新画像
+- 晨间规划时，参考用户画像中的身份、科目、教辅资料来安排具体内容
+- 需要了解用户的学习路线图/计划框架 → 用 board_read 读取目标板
+- 生成周报月报时，先用 report_list 读取历史报告
 
 执行完工具后会告知你结果，请根据结果向用户做最终回复。
 如果用户没有要求操作，正常对话即可，不要插入工具调用。"#.to_string()

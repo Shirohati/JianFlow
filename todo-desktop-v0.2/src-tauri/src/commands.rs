@@ -4,6 +4,7 @@ use crate::database::Database;
 use crate::learning;
 use crate::models::*;
 use crate::reminder::ReminderEngine;
+use crate::skills;
 use serde_json::Value;
 use std::sync::Arc;
 use tauri::{Emitter, State};
@@ -823,11 +824,14 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
             let deadline = tool_call.args.get("deadline").and_then(|v| v.as_str()).map(|s| s.to_string());
             let note = tool_call.args.get("note").and_then(|v| v.as_str()).map(|s| s.to_string());
             let todo_date = tool_call.args.get("todo_date").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let schedule_start = tool_call.args.get("schedule_start").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let schedule_end = tool_call.args.get("schedule_end").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let sub_type = tool_call.args.get("sub_type").and_then(|v| v.as_str()).unwrap_or("todo");
 
             let task = db.add_task(TaskItem {
                 id: String::new(),
-                r#type: "todo".into(),
-                sub_type: "todo".into(),
+                r#type: tool_call.args.get("type").and_then(|v| v.as_str()).unwrap_or("todo").into(),
+                sub_type: sub_type.into(),
                 title: title.into(),
                 content: String::new(),
                 category_id: category_id.into(),
@@ -851,11 +855,16 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
                 group_id: None,
                 board_tab: None,
                 node_mode: None,
-                schedule_start: None, schedule_end: None,
+                schedule_start: schedule_start.clone(), schedule_end: schedule_end.clone(),
                 created_at: String::new(),
                 updated_at: String::new(),
             });
-            AiToolResult { success: true, message: format!("已创建待办「{}」", title), data: Some(serde_json::json!({"id": task.id, "title": task.title})) }
+            AiToolResult { success: true, message: format!("已创建待办「{}」{}", title,
+                match (&schedule_start, &schedule_end) {
+                    (Some(s), Some(e)) => format!("（{}-{}）", s, e),
+                    (Some(s), None) => format!("（{}）", s),
+                    _ => String::new(),
+                }), data: Some(serde_json::json!({"id": task.id, "title": task.title})) }
         }
         "task_update" => {
             let id = tool_call.args.get("id").and_then(|v| v.as_str()).unwrap_or("");
@@ -863,7 +872,7 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
                 return AiToolResult { success: false, message: "缺少 id 参数".into(), data: None };
             }
             let mut updates = serde_json::Map::new();
-            for key in &["title", "status", "priority", "deadline", "note", "category_id", "todo_date"] {
+            for key in &["title", "status", "priority", "deadline", "note", "category_id", "todo_date", "schedule_start", "schedule_end"] {
                 if let Some(val) = tool_call.args.get(*key) {
                     updates.insert(key.to_string(), val.clone());
                 }
@@ -918,7 +927,7 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
                 } else { true }
             }).collect();
             let data = serde_json::json!(filtered.iter().map(|t| {
-                serde_json::json!({"id": t.id, "title": t.title, "status": t.status, "todo_date": t.todo_date, "deadline": t.deadline})
+                serde_json::json!({"id": t.id, "title": t.title, "status": t.status, "todo_date": t.todo_date, "deadline": t.deadline, "schedule_start": t.schedule_start, "schedule_end": t.schedule_end})
             }).collect::<Vec<_>>());
             AiToolResult { success: true, message: format!("找到 {} 条待办", filtered.len()), data: Some(data) }
         }
@@ -933,6 +942,7 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
                         "todo_date": t.todo_date, "deadline": t.deadline,
                         "note": t.note, "content": t.content,
                         "created_at": t.created_at,
+                        "schedule_start": t.schedule_start, "schedule_end": t.schedule_end,
                     });
                     AiToolResult { success: true, message: format!("待办「{}」", t.title), data: Some(data) }
                 }
@@ -1056,6 +1066,39 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
                 AiToolResult { success: false, message: "未找到该记忆".into(), data: None }
             }
         }
+        "profile_update" => {
+            let key = tool_call.args.get("key").and_then(|v| v.as_str()).unwrap_or("");
+            let value = tool_call.args.get("value").and_then(|v| v.as_str()).unwrap_or("");
+            if key.is_empty() { return AiToolResult { success: false, message: "缺少 key 参数".into(), data: None }; }
+            let profile_json_str = db.get_user_profile_json().unwrap_or_else(|| "{}".to_string());
+            let mut profile: serde_json::Value = serde_json::from_str(&profile_json_str).unwrap_or(serde_json::json!({}));
+            // 如果是 subjects/materials/weakness/rest_days 这类数组字段，将 value 按逗号分割
+            if matches!(key, "subjects" | "materials" | "weakness" | "rest_days") {
+                let arr: Vec<&str> = value.split(&[',', '，', '、'][..]).map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+                profile[key] = serde_json::json!(arr);
+            } else if key == "daily_hours" {
+                if let Ok(n) = value.parse::<f64>() {
+                    profile[key] = serde_json::json!(n);
+                } else {
+                    return AiToolResult { success: false, message: "daily_hours 必须是数字".into(), data: None };
+                }
+            } else {
+                profile[key] = serde_json::json!(value);
+            }
+            db.update_user_profile_json(&profile.to_string());
+            let field_label = match key {
+                "identity" => "身份",
+                "target" => "目标",
+                "subjects" => "科目",
+                "progress" => "进度",
+                "materials" => "教辅资料",
+                "daily_hours" => "每日时长",
+                "weakness" => "弱项",
+                "rest_days" => "休息日",
+                _ => key,
+            };
+            AiToolResult { success: true, message: format!("已更新{}为：{}", field_label, value), data: None }
+        }
         "connection_delete" => {
             let from_id = tool_call.args.get("from_id").and_then(|v| v.as_str()).unwrap_or("");
             let to_id = tool_call.args.get("to_id").and_then(|v| v.as_str()).unwrap_or("");
@@ -1067,6 +1110,33 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
             } else {
                 AiToolResult { success: false, message: "未找到该连接线".into(), data: None }
             }
+        }
+        "board_read" => {
+            let board = db.get_board_data();
+            let data = serde_json::json!({
+                "notes": board.notes.iter().map(|n| serde_json::json!({
+                    "id": n.id, "title": n.title, "note": n.note, "type": n.r#type,
+                    "board_tab": n.board_tab, "grid_x": n.grid_x, "grid_y": n.grid_y,
+                })).collect::<Vec<_>>(),
+                "connections": board.connections.iter().map(|c| serde_json::json!({
+                    "from_id": c.from_id, "to_id": c.to_id,
+                })).collect::<Vec<_>>(),
+            });
+            AiToolResult { success: true, message: format!("目标板：{} 个便签，{} 条连线", board.notes.len(), board.connections.len()), data: Some(data) }
+        }
+        "report_list" => {
+            let start_date = tool_call.args.get("start_date").and_then(|v| v.as_str()).unwrap_or("");
+            let end_date = tool_call.args.get("end_date").and_then(|v| v.as_str()).unwrap_or("");
+            if start_date.is_empty() || end_date.is_empty() {
+                return AiToolResult { success: false, message: "缺少 start_date 或 end_date 参数".into(), data: None };
+            }
+            let reports = db.get_reports(start_date, end_date);
+            let data = serde_json::json!(reports.iter().map(|r| serde_json::json!({
+                "date": r.date, "report_type": r.report_type,
+                "user_summary": r.user_summary, "ai_data": r.ai_data,
+                "created_at": r.created_at,
+            })).collect::<Vec<_>>());
+            AiToolResult { success: true, message: format!("找到 {} 条报告", reports.len()), data: Some(data) }
         }
         _ => AiToolResult { success: false, message: format!("未知工具: {}", tool_call.tool), data: None },
     }
@@ -1347,4 +1417,162 @@ pub fn user_get_insights(db: State<'_, Database>) -> Vec<UserInsight> {
 #[tauri::command]
 pub fn user_delete_insight(db: State<'_, Database>, id: String) -> bool {
     db.delete_user_insight(&id)
+}
+
+// --- Skill 系统 ---
+
+#[tauri::command]
+pub fn skill_trigger(
+    db: State<'_, Database>,
+    store: State<'_, Arc<ActivityStore>>,
+    name: String,
+) -> Result<SkillResponse, String> {
+    match name.as_str() {
+        "init" => {
+            let has_profile = db.get_user_profile_json().is_some();
+            if has_profile {
+                Ok(SkillResponse {
+                    message: "您已经完成过初始化。如需重新设置，请填写以下问卷：".to_string(),
+                    form_schema: Some(skills::init::init_form_schema()),
+                    done: false,
+                })
+            } else {
+                Ok(SkillResponse {
+                    message: "欢迎使用笺流管家！请先填写以下问卷，让我更好地了解您：".to_string(),
+                    form_schema: Some(skills::init::init_form_schema()),
+                    done: false,
+                })
+            }
+        }
+        "evening" => {
+            let has_profile = db.get_user_profile_json().is_some();
+            if !has_profile {
+                return Ok(SkillResponse {
+                    message: "请先完成初始化设置（点击「初始化」按钮），然后才能使用晚间总结功能。".to_string(),
+                    form_schema: None,
+                    done: true,
+                });
+            }
+            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+            let summary = store.get_daily_summary(&today);
+            let tasks = db.get_tasks(crate::models::TaskFilters {
+                todo_date: Some(today.clone()),
+                ..Default::default()
+            });
+            let done = tasks.iter().filter(|t| t.todo_status.as_deref() == Some("completed")).count();
+            let total = tasks.len();
+
+            let _cats: Vec<String> = summary.category_breakdown.iter()
+                .map(|(k, v)| format!("- {}: {} 分钟", k, v / 60)).collect();
+
+            Ok(SkillResponse {
+                message: format!(
+                    "今天您共活跃了 {} 分钟，待办完成 {}/{}。\n\n\
+                    我正在分析今天的数据，为您生成回顾问题……",
+                    summary.total_active_seconds / 60, done, total
+                ),
+                form_schema: None,
+                done: false,
+            })
+        }
+        "morning" => {
+            let has_profile = db.get_user_profile_json().is_some();
+            if !has_profile {
+                return Ok(SkillResponse {
+                    message: "请先完成初始化设置（点击「初始化」按钮），然后才能使用晨间规划功能。".to_string(),
+                    form_schema: None,
+                    done: true,
+                });
+            }
+            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+            let existing = db.get_tasks(crate::models::TaskFilters {
+                todo_date: Some(today),
+                ..Default::default()
+            });
+            let existing_count = existing.len();
+            Ok(SkillResponse {
+                message: format!(
+                    "早安！今天已有 {} 项待办。在规划之前，我想先了解一下：\n\n\
+                    今天有什么时间安排或约束吗？有什么想重点推进的事情？",
+                    existing_count
+                ),
+                form_schema: None,
+                done: false,
+            })
+        }
+        "report" => {
+            let has_profile = db.get_user_profile_json().is_some();
+            if !has_profile {
+                return Ok(SkillResponse {
+                    message: "请先完成初始化设置（点击「初始化」按钮），然后才能使用周报月报功能。".to_string(),
+                    form_schema: None,
+                    done: true,
+                });
+            }
+            Ok(SkillResponse {
+                message: "您想总结哪个时间段？例如：这周、上个月、7月1号到7月10号。".to_string(),
+                form_schema: None,
+                done: false,
+            })
+        }
+        _ => Err(format!("未知 skill: {}", name)),
+    }
+}
+
+#[tauri::command]
+pub fn skill_submit(
+    db: State<'_, Database>,
+    name: String,
+    form_data: Value,
+) -> Result<SkillResponse, String> {
+    match name.as_str() {
+        "init" => {
+            let result = skills::init::process_init_form(&form_data)?;
+            if result.done {
+                if let Some(profile_json) = form_data.get("profile_json").and_then(|v| v.as_str()) {
+                    db.update_user_profile_json(profile_json);
+                } else {
+                    // Save the form data as profile_json
+                    db.update_user_profile_json(&form_data.to_string());
+                }
+            }
+            Ok(result)
+        }
+        "evening" => skills::evening::process_evening_form(&form_data),
+        "morning" => skills::morning::process_morning_form(&form_data),
+        _ => Err(format!("未知 skill: {}", name)),
+    }
+}
+
+#[tauri::command]
+pub fn board_read(db: State<'_, Database>) -> BoardData {
+    db.get_board_data()
+}
+
+#[tauri::command]
+pub fn report_list(
+    db: State<'_, Database>,
+    start_date: String,
+    end_date: String,
+) -> Vec<DailyReport> {
+    db.get_reports(&start_date, &end_date)
+}
+
+#[tauri::command]
+pub fn user_update_profile_json(db: State<'_, Database>, profile_json: String) {
+    db.update_user_profile_json(&profile_json);
+}
+
+// Default impl for TaskFilters to use in skill_trigger
+impl Default for TaskFilters {
+    fn default() -> Self {
+        Self {
+            status: None,
+            r#type: None,
+            category_id: None,
+            parent_id: None,
+            todo_date: None,
+            pin_date: None,
+        }
+    }
 }

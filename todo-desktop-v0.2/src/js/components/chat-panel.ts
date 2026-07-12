@@ -1,51 +1,18 @@
-import { taskApi, activityApi, goalApi, connectionApi, conversationApi, streamChat, personaApi, userApi } from '../api';
+import { taskApi, activityApi, goalApi, conversationApi, streamChat, personaApi, userApi, timeRecordApi } from '../api';
 import { store } from '../store';
 import { initIcons, getIconHTML } from '../icons';
+import { invoke } from '@tauri-apps/api/core';
 import type { AiChatRequest, Conversation, AiPersona, UserProfile } from '../api';
-
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  reasoning?: string;
-}
-
-const SCENARIOS = [
-  { id: 'plan', label: '晨间规划', icon: 'sun' },
-  { id: 'weekly', label: '周报生成', icon: 'calendar-range' },
-  { id: 'analyze', label: '分析建议', icon: 'bar-chart-3' },
-  { id: 'free', label: '自由问答', icon: 'message-square' },
-];
-
-const SCENARIO_PROMPTS: Record<string, string> = {
-  plan: '帮我规划今天的学习和工作，根据我的待办事项和习惯给出建议。',
-  weekly: '帮我分析本周的学习数据，生成一份周报总结。',
-  analyze: '根据我当前的数据，给我一些提升生产力的建议。',
-  free: '',
-};
+import { ChatMessage, renderMessages, updateMessageElement } from '../chat/chat-message';
+import { setSkillStatus, setOnTrigger, renderToolbar, bindSkillButtons, updateToolbarState, SkillName } from '../chat/chat-skill';
 
 let messages: ChatMessage[] = [];
 let sessionId = 'session_' + Date.now();
 let conversations: Conversation[] = [];
 let streamingCleanup: (() => void) | null = null;
 let currentPersona: AiPersona | null = null;
-
-function escapeHtml(str: string): string {
-  const m: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
-  return str.replace(/[&<>"]/g, c => m[c] || c);
-}
-
-function renderMarkdown(text: string): string {
-  let html = escapeHtml(text);
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  html = html.replace(/### (.+)/g, '<h4>$1</h4>');
-  html = html.replace(/## (.+)/g, '<h3>$1</h3>');
-  html = html.replace(/# (.+)/g, '<h2>$1</h2>');
-  html = html.replace(/- (.+)/g, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-  html = html.replace(/\n/g, '<br>');
-  return html;
-}
+let userProfile: UserProfile | null = null;
+let currentSkill: SkillName | null = null;
 
 async function loadConversations(): Promise<void> {
   try { conversations = await conversationApi.list(); } catch { conversations = []; }
@@ -67,14 +34,33 @@ async function loadCurrentPersona(): Promise<void> {
   }
 }
 
-let userProfile: UserProfile | null = null;
-
 async function loadUserProfile(): Promise<void> {
   try {
     userProfile = await userApi.getProfile();
     renderProfilePanel();
   } catch {
     userProfile = null;
+  }
+}
+
+async function checkInitStatus(): Promise<boolean> {
+  try {
+    const profile = await userApi.getProfile();
+    const hasInit = !!(profile as any).profile_json;
+    setSkillStatus('init', 'ready');
+    if (hasInit) {
+      setSkillStatus('morning', 'ready');
+      setSkillStatus('evening', 'ready');
+      setSkillStatus('report', 'ready');
+    } else {
+      setSkillStatus('morning', 'locked');
+      setSkillStatus('evening', 'locked');
+      setSkillStatus('report', 'locked');
+    }
+    updateToolbarState();
+    return hasInit;
+  } catch {
+    return false;
   }
 }
 
@@ -140,6 +126,7 @@ function newConversation(): void {
   if (chatPanel.streaming) return;
   sessionId = 'session_' + Date.now();
   messages = [];
+  currentSkill = null;
   if (streamingCleanup) { streamingCleanup(); streamingCleanup = null; }
   renderMsgView();
   renderConversationList();
@@ -151,36 +138,18 @@ function renderMsgView(): void {
   if (messages.length === 0) {
     el.innerHTML = `
       <div class="chat-welcome">
-        <p>你好！我是笺流 AI 管家，可以帮你：</p>
-        <ul>
-          <li>📋 规划每日安排</li>
-          <li>📊 分析学习数据</li>
-          <li>📝 生成周报总结</li>
-          <li>💬 回答你的问题</li>
+        <p id="chatWelcomeMsg">你好！我是笺流 AI 管家，可以帮你：</p>
+        <ul id="chatWelcomeList">
+          <li>规划每日安排</li>
+          <li>分析学习数据</li>
+          <li>生成周报总结</li>
+          <li>回答你的问题</li>
         </ul>
       </div>
     `;
     return;
   }
-  el.innerHTML = messages.map(m => {
-    if (m.role === 'assistant' && m.reasoning) {
-      const showThinking = (store.get<any>('activitySettings') as any)?.show_thinking === true;
-      return `
-        <div class="chat-msg chat-msg--${m.role}">
-          <details class="chat-thinking"${showThinking ? ' open' : ''}>
-            <summary>🧠 思考链</summary>
-            <div class="chat-thinking-content">${escapeHtml(m.reasoning)}</div>
-          </details>
-          <div class="chat-msg-content">${renderMarkdown(m.content)}</div>
-        </div>
-      `;
-    }
-    return `
-      <div class="chat-msg chat-msg--${m.role}">
-        <div class="chat-msg-content">${renderMarkdown(m.content)}</div>
-      </div>
-    `;
-  }).join('');
+  el.innerHTML = renderMessages(messages);
   el.scrollTop = el.scrollHeight;
 }
 
@@ -218,6 +187,174 @@ function updatePersonaDisplay(): void {
   }
 }
 
+function escapeHtml(str: string): string {
+  const m: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+  return str.replace(/[&<>"]/g, c => m[c] || c);
+}
+
+async function handleFormSubmit(data: Record<string, any>): Promise<void> {
+  if (currentSkill) {
+    const skillName = currentSkill;
+    currentSkill = null;
+
+    if (skillName === 'init') {
+      try {
+        const result: any = await invoke('skill_submit', { name: 'init', formData: data });
+        messages.push({ role: 'user', content: '【FORM_DATA】' + JSON.stringify(data) + '【/FORM_DATA】' });
+        messages.push({ role: 'assistant', content: result.message || '已收到。' });
+        renderMsgView();
+        if (result.done) {
+          setSkillStatus('init', 'done');
+          updateToolbarState();
+          setTimeout(() => { loadUserProfile(); checkInitStatus(); }, 1000);
+        } else if (result.form_schema) {
+          messages.push({ role: 'assistant', content: '【FORM】' + JSON.stringify(result.form_schema) + '【/FORM】' });
+          currentSkill = 'init';
+          renderMsgView();
+        }
+      } catch (err: any) {
+        messages.push({ role: 'user', content: '【FORM_DATA】' + JSON.stringify(data) + '【/FORM_DATA】' });
+        messages.push({ role: 'assistant', content: '处理出错：' + (err?.message || String(err)) });
+        renderMsgView();
+      }
+    } else {
+      setSkillStatus(skillName as SkillName, 'running');
+      updateToolbarState();
+      await doSend('【FORM_DATA】' + JSON.stringify(data) + '【/FORM_DATA】');
+    }
+  } else {
+    const formDataStr = '【FORM_DATA】' + JSON.stringify(data) + '【/FORM_DATA】';
+    await doSend(formDataStr);
+  }
+}
+
+async function handleSkillTrigger(name: SkillName): Promise<void> {
+  setSkillStatus(name, 'running');
+  updateToolbarState();
+  currentSkill = name;
+  await doSend('/skill ' + name);
+}
+
+async function doSend(text: string): Promise<void> {
+  if (!text || chatPanel.streaming) return;
+
+  messages.push({ role: 'user', content: text });
+  const msgIdx = messages.length;
+  messages.push({ role: 'assistant', content: '', reasoning: '' });
+  renderMsgView();
+  chatPanel.streaming = true;
+  chatPanel.disableInput();
+
+  const currentPage = store.get<string>('currentPage') || 'home';
+  const pageData = await chatPanel.gatherPageData();
+  const convHistory = messages.slice(0, -1).map(m => ({ role: m.role, content: m.content }));
+  const request: AiChatRequest = { session_id: sessionId, message: text, page: currentPage, page_data: pageData, history: convHistory };
+
+  const showThinking = (store.get<any>('activitySettings') as any)?.show_thinking === true;
+  (window as any).__showThinking = showThinking;
+
+  try {
+    streamingCleanup = await streamChat(request, {
+      onToken: (token) => {
+        const msg = messages[msgIdx];
+        if (msg) msg.content += token;
+        updateMessageElement(messages, msgIdx, showThinking);
+      },
+      onReasoning: (reasoning) => {
+        const msg = messages[msgIdx];
+        if (msg) msg.reasoning = (msg.reasoning || '') + reasoning;
+        updateMessageElement(messages, msgIdx, showThinking);
+      },
+      onDone: (result) => {
+        messages[msgIdx].content = result.content;
+        chatPanel.streaming = false;
+        chatPanel.enableInput();
+        renderMsgView();
+        loadConversations();
+        setTimeout(() => {
+          loadUserProfile();
+          checkInitStatus();
+          if (currentSkill) {
+            setSkillStatus(currentSkill, 'running');
+            updateToolbarState();
+          }
+        }, 2000);
+      },
+      onError: (error) => {
+        messages[msgIdx] = { role: 'assistant', content: '抱歉，出了点问题：' + error + '\n\n请检查 AI 配置是否正确。' };
+        chatPanel.streaming = false;
+        chatPanel.enableInput();
+        renderMsgView();
+      },
+    });
+  } catch (err: any) {
+    messages[msgIdx] = { role: 'assistant', content: '抱歉，出了点问题：' + (err?.message || String(err)) + '\n\n请检查 AI 配置是否正确。' };
+    chatPanel.streaming = false;
+    chatPanel.enableInput();
+    renderMsgView();
+  }
+}
+
+function setupFormEventDelegation(): void {
+  const msgEl = document.getElementById('chatMessages');
+  if (!msgEl) return;
+
+  msgEl.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const formEl = target.closest('.cf-form') as HTMLElement;
+    if (!formEl) return;
+
+    if (target.closest('.cf-btn-submit')) {
+      const formContainer = target.closest('.cf-form') as HTMLElement;
+      if (!formContainer) return;
+      const msgEl = formContainer.closest('.chat-msg') as HTMLElement;
+      if (!msgEl) return;
+      const idx = parseInt(msgEl.dataset.msgIndex!);
+      const msg = messages[idx];
+      if (!msg) return;
+
+      // Collect form data
+      const data: Record<string, any> = {};
+      formContainer.querySelectorAll('[data-form-key]').forEach(el => {
+        const key = (el as HTMLElement).dataset.formKey!;
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+          data[key] = el.value;
+        } else if (el.classList.contains('cf-tags-container')) {
+          const tags = el.querySelectorAll('.cf-tag');
+          data[key] = Array.from(tags).map(t => t.textContent?.replace('×', '').trim() || '');
+        }
+      });
+
+      handleFormSubmit(data);
+    }
+  });
+
+  msgEl.addEventListener('keydown', (e) => {
+    const target = e.target as HTMLElement;
+    if (!target.classList.contains('cf-tags-input')) return;
+    const input = target as HTMLInputElement;
+    if ((e as KeyboardEvent).key === 'Enter') {
+      e.preventDefault();
+      const val = input.value.trim();
+      if (!val) return;
+      const container = input.closest('.cf-tags-container');
+      if (!container) return;
+      const tagsContainer = container.querySelector('.cf-tags');
+      if (!tagsContainer) return;
+      const tag = document.createElement('span');
+      tag.className = 'cf-tag';
+      tag.textContent = val;
+      const del = document.createElement('span');
+      del.className = 'cf-tag-del';
+      del.textContent = '×';
+      del.addEventListener('click', () => tag.remove());
+      tag.appendChild(del);
+      tagsContainer.appendChild(tag);
+      input.value = '';
+    }
+  });
+}
+
 export const chatPanel = {
   isOpen: false,
   streaming: false,
@@ -236,17 +373,14 @@ export const chatPanel = {
           </div>
         </div>
         <div id="chatConvList" class="chat-conv-list"></div>
-        <div class="chat-scenarios">
-          ${SCENARIOS.map(s => `<button class="chat-scenario-btn" data-scenario="${s.id}">${getIconHTML(s.icon, { size: '12' })} ${s.label}</button>`).join('')}
-        </div>
         <div class="chat-messages" id="chatMessages">
           <div class="chat-welcome">
             <p id="chatWelcomeMsg">你好！我是笺流 AI 管家，可以帮你：</p>
             <ul id="chatWelcomeList">
-              <li>📋 规划每日安排</li>
-              <li>📊 分析学习数据</li>
-              <li>📝 生成周报总结</li>
-              <li>💬 回答你的问题</li>
+              <li>规划每日安排</li>
+              <li>分析学习数据</li>
+              <li>生成周报总结</li>
+              <li>回答你的问题</li>
             </ul>
           </div>
         </div>
@@ -254,6 +388,7 @@ export const chatPanel = {
           <textarea id="chatInput" class="chat-input" placeholder="输入消息..." rows="2"></textarea>
           <button id="chatSendBtn" class="btn btn--primary btn--icon">${getIconHTML('send', { size: '16' })}</button>
         </div>
+        ${renderToolbar()}
         <div id="chatProfilePanel" class="chat-profile-panel"></div>
       </div>
     `;
@@ -263,14 +398,15 @@ export const chatPanel = {
     div.innerHTML = html;
     document.body.appendChild(div);
 
+    setOnTrigger((name) => handleSkillTrigger(name));
+
     this.bindEvents();
+    setupFormEventDelegation();
     initIcons();
-    // 加载保存的对话
     loadConversations();
-    // 加载当前人设
     loadCurrentPersona().then(() => updatePersonaDisplay());
-    // 加载用户画像
     loadUserProfile();
+    checkInitStatus();
   },
 
   bindEvents(): void {
@@ -286,16 +422,8 @@ export const chatPanel = {
       }
     });
 
-    document.querySelectorAll('.chat-scenario-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = (btn as HTMLElement).dataset.scenario!;
-        const prompt = SCENARIO_PROMPTS[id];
-        if (prompt) {
-          (document.getElementById('chatInput') as HTMLTextAreaElement).value = prompt;
-          this.send();
-        }
-      });
-    });
+    const toolbarEl = document.getElementById('chatSkillBar');
+    if (toolbarEl) bindSkillButtons(toolbarEl);
   },
 
   toggle(): void {
@@ -313,6 +441,7 @@ export const chatPanel = {
     loadConversations();
     loadCurrentPersona().then(() => updatePersonaDisplay());
     loadUserProfile();
+    checkInitStatus();
   },
 
   close(): void {
@@ -382,108 +511,111 @@ export const chatPanel = {
       if (score) parts.push(`今日生产力评分：${score.score}分 (${score.level})`);
     } catch { /* ignore */ }
 
-    if (page === 'board') {
-      try {
-        const goals = await goalApi.list();
-        if (goals.length > 0) parts.push(`学习目标：${goals.map((g: any) => `${g.goal_type} ${g.target_minutes}分钟/天`).join('，')}`);
-      } catch { /* ignore */ }
-      try {
-        const conns = await connectionApi.list();
-        if (conns.length > 0) parts.push(`连接线：${conns.length} 条`);
-      } catch { /* ignore */ }
-      try {
-        const all = await taskApi.list({});
-        const boardNotes = all.filter((t: any) => t.grid_x !== null && t.grid_y !== null && t.sub_type !== 'task');
-        if (boardNotes.length > 0) {
-          const types = [...new Set(boardNotes.map((t: any) => t.type))];
-          parts.push(`=== 目标板内容 (${boardNotes.length} 项, 类型: ${types.join('/')}) ===`);
+    try {
+      const summary = await activityApi.getSummary(today);
+      if (summary && summary.total_active_seconds > 0) {
+        parts.push(`=== 今日活动监测 ===`);
+        parts.push(`总活跃时长：${Math.round(summary.total_active_seconds / 60)} 分钟`);
+        const cats = Object.entries(summary.category_breakdown).sort((a, b) => b[1] - a[1]);
+        for (const [cat, sec] of cats) {
+          parts.push(`${cat}: ${Math.round(sec / 60)} 分钟`);
+        }
+        const apps = summary.top_apps.slice(0, 8);
+        if (apps.length > 0) {
+          parts.push('Top 应用/窗口：');
+          apps.forEach(a => parts.push(`  ${a.name} (${a.category}): ${Math.round(a.seconds / 60)} 分钟`));
+        }
+      }
+    } catch { /* ignore */ }
+
+    try {
+      const sessions = await activityApi.getSessions(today);
+      const notable = sessions
+        .filter(s => s.duration_seconds >= 180)
+        .sort((a, b) => b.duration_seconds - a.duration_seconds)
+        .slice(0, 15);
+      if (notable.length > 0) {
+        parts.push(`较长片段（按时长倒序）：`);
+        notable.forEach(s => {
+          const start = s.start_time.slice(11, 16);
+          const end = s.end_time.slice(11, 16);
+          const label = s.web_title || s.window_title || s.process_name || '未知';
+          parts.push(`  ${start}-${end} [${s.category}] ${label}（${Math.round(s.duration_seconds / 60)} 分钟）`);
+        });
+      }
+    } catch { /* ignore */ }
+
+    try {
+      const records = await timeRecordApi.list(today);
+      if (records.length > 0) {
+        let totalPomo = 0;
+        parts.push(`=== 今日专注/番茄钟记录 ===`);
+        records.forEach(r => {
+          totalPomo += r.total_minutes;
+          parts.push(`  ${r.time_type}: ${r.total_minutes} 分钟${r.note ? ` — ${r.note}` : ''}`);
+        });
+        parts.push(`专注总时长：${totalPomo} 分钟`);
+      }
+    } catch { /* ignore */ }
+
+    try {
+      const todayTasks = await taskApi.list({ todo_date: today });
+      const scheduled = todayTasks.filter((t: any) => t.schedule_start);
+      if (scheduled.length > 0) {
+        scheduled.sort((a: any, b: any) => (a.schedule_start || '').localeCompare(b.schedule_start || ''));
+        parts.push(`=== 今日时间轴（带时段的任务） ===`);
+        scheduled.forEach((t: any) => {
+          const status = (t.todo_status === 'completed' || t.status === 'done') ? '✅' : '⬜';
+          parts.push(`  ${status} ${t.schedule_start.slice(0,5)}${t.schedule_end ? '-' + t.schedule_end.slice(0,5) : ''} ${t.title}`);
+        });
+      }
+    } catch { /* ignore */ }
+
+    try {
+      const all = await taskApi.list({});
+      const boardNotes = all.filter((t: any) => t.grid_x !== null && t.grid_y !== null && t.sub_type !== 'task');
+      if (boardNotes.length > 0) {
+        const types = [...new Set(boardNotes.map((t: any) => t.type))];
+        const tabs = [...new Set(boardNotes.map((t: any) => t.board_tab).filter(Boolean))];
+        parts.push(`=== 目标板内容 (${boardNotes.length} 项, 类型: ${types.join('/')}) ===`);
+        if (page === 'board') {
           boardNotes.forEach((t: any) => {
             const content = t.note || t.content || '';
             parts.push(`  - [${t.type}] ${t.title}${content ? `: ${content.slice(0, 80)}` : ''} (ID:${t.id.slice(0,8)}...)${t.board_tab ? ` tab:${t.board_tab}` : ''}`);
           });
+        } else {
+          // 非 board 页只展示概览：每类/每标签页几项
+          if (tabs.length > 0) parts.push(`  标签页：${tabs.join('、')}`);
+          const byType: Record<string, number> = {};
+          boardNotes.forEach((t: any) => { byType[t.type] = (byType[t.type] || 0) + 1; });
+          parts.push(`  分布：${Object.entries(byType).map(([k, v]) => `${k} ${v}项`).join('、')}`);
+          parts.push(`  （如需查看详情，可用 board_read 工具）`);
         }
-      } catch { /* ignore */ }
-    }
+      }
+    } catch { /* ignore */ }
+    try {
+      const goals = await goalApi.list();
+      if (goals.length > 0) parts.push(`学习目标：${goals.map((g: any) => `${g.goal_type} ${g.target_minutes}分钟/天`).join('，')}`);
+    } catch { /* ignore */ }
 
     return parts.join('\n');
   },
 
-  async send(): Promise<void> {
+  send(): void {
     const input = document.getElementById('chatInput') as HTMLTextAreaElement;
     const text = input.value.trim();
     if (!text || this.streaming) return;
     input.value = '';
-
-    messages.push({ role: 'user', content: text });
-    const msgIdx = messages.length; // index for the coming assistant message
-    messages.push({ role: 'assistant', content: '', reasoning: '' });
-    renderMsgView();
-    this.streaming = true;
-    this.disableInput();
-
-    const currentPage = store.get<string>('currentPage') || 'home';
-    const pageData = await this.gatherPageData();
-    const convHistory = messages.slice(0, -1).map(m => ({ role: m.role, content: m.content }));
-    const request: AiChatRequest = { session_id: sessionId, message: text, page: currentPage, page_data: pageData, history: convHistory };
-
-    try {
-      streamingCleanup = await streamChat(request, {
-        onToken: (token) => {
-          const msg = messages[msgIdx];
-          if (msg) msg.content += token;
-          this.updateMsgElement(msgIdx);
-        },
-        onReasoning: (reasoning) => {
-          const msg = messages[msgIdx];
-          if (msg) msg.reasoning = (msg.reasoning || '') + reasoning;
-          this.updateMsgElement(msgIdx);
-        },
-        onDone: (result) => {
-          messages[msgIdx].content = result.content;
-          this.streaming = false;
-          this.enableInput();
-          renderMsgView();
-          loadConversations();
-          // 延迟刷新画像（等待后端提取完成）
-          setTimeout(() => loadUserProfile(), 2000);
-        },
-        onError: (error) => {
-          messages[msgIdx] = { role: 'assistant', content: '抱歉，出了点问题：' + error + '\n\n请检查 AI 配置是否正确。' };
-          this.streaming = false;
-          this.enableInput();
-          renderMsgView();
-        },
-      });
-    } catch (err: any) {
-      messages[msgIdx] = { role: 'assistant', content: '抱歉，出了点问题：' + (err?.message || String(err)) + '\n\n请检查 AI 配置是否正确。' };
-      this.streaming = false;
-      this.enableInput();
-      renderMsgView();
-    }
+    doSend(text);
   },
 
-  updateMsgElement(idx: number): void {
-    const el = document.getElementById('chatMessages');
-    if (!el) return;
-    const msg = messages[idx];
-    if (!msg) return;
-    const msgEls = el.querySelectorAll('.chat-msg');
-    if (idx >= 0 && idx < msgEls.length) {
-      const target = msgEls[idx] as HTMLElement;
-      if (msg.reasoning) {
-        const showThinking = (store.get<any>('activitySettings') as any)?.show_thinking === true;
-        target.innerHTML = `
-          <details class="chat-thinking"${showThinking ? ' open' : ''}>
-            <summary>🧠 思考链</summary>
-            <div class="chat-thinking-content">${escapeHtml(msg.reasoning || '')}</div>
-          </details>
-          <div class="chat-msg-content">${renderMarkdown(msg.content)}</div>
-        `;
-      } else {
-        target.innerHTML = `<div class="chat-msg-content">${renderMarkdown(msg.content)}</div>`;
-      }
-    }
-    el.scrollTop = el.scrollHeight;
+  openAndSend(prompt: string): void {
+    this.open();
+    if (this.streaming) return;
+    setTimeout(() => {
+      (document.getElementById('chatInput') as HTMLTextAreaElement).value = prompt;
+      this.send();
+    }, 300);
   },
 
   disableInput(): void {
@@ -499,14 +631,5 @@ export const chatPanel = {
     if (input) input.disabled = false;
     if (btn) btn.disabled = false;
     if (input) input.focus();
-  },
-
-  openAndSend(prompt: string): void {
-    this.open();
-    if (this.streaming) return;
-    setTimeout(() => {
-      (document.getElementById('chatInput') as HTMLTextAreaElement).value = prompt;
-      this.send();
-    }, 300);
   },
 };

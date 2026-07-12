@@ -222,6 +222,8 @@ pub struct AppData {
     pub conversations: Vec<Conversation>,
     #[serde(default)]
     pub user_profile: UserProfile,
+    #[serde(default)]
+    pub reports: Vec<DailyReport>,
     pub version: String,
 }
 
@@ -273,6 +275,7 @@ impl Default for AppData {
             memories: Vec::new(),
             conversations: Vec::new(),
             user_profile: UserProfile::default(),
+            reports: Vec::new(),
             version: "0.1.1".into(),
         }
     }
@@ -523,6 +526,36 @@ pub struct UserProfile {
     pub last_updated: String,
     pub total_days_active: i32,
     pub average_daily_focus: i32,
+    #[serde(default)]
+    pub profile_json: Option<String>,
+}
+
+// ===== Skill 系统 =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SkillResponse {
+    pub message: String,
+    pub form_schema: Option<serde_json::Value>,
+    pub done: bool,
+}
+
+// ===== 报告系统 =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DailyReport {
+    pub date: String,
+    pub user_summary: String,
+    pub ai_data: Option<String>,
+    pub report_type: String,
+    pub created_at: String,
+}
+
+// ===== 目标板读取结果 =====
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct BoardData {
+    pub notes: Vec<TaskItem>,
+    pub connections: Vec<Connection>,
 }
 
 /// 行为模式
