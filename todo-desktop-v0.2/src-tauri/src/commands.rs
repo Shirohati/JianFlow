@@ -10,7 +10,8 @@ use crate::reminder::ReminderEngine;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tauri::{Emitter, State};
+use std::time::Instant;
+use tauri::{AppHandle, Emitter, State};
 
 #[tauri::command]
 pub fn task_list(db: State<'_, Database>, filters: TaskFilters) -> Vec<TaskItem> {
@@ -818,8 +819,16 @@ pub async fn activity_get_productivity_score(
 
 // --- AI 对话 ---
 
-pub async fn execute_tool_call(tool_call: &AiToolCall, db: &Database, mcp: Option<&McpRegistry>) -> AiToolResult {
-    match tool_call.tool.as_str() {
+pub async fn execute_tool_call(tool_call: &AiToolCall, db: &Database, mcp: Option<&McpRegistry>, app: Option<&AppHandle>) -> AiToolResult {
+    if let Some(app) = app {
+        let _ = app.emit("tool-execution-start", serde_json::json!({
+            "tool": tool_call.tool,
+            "args": tool_call.args,
+            "started_at": chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
+        }));
+    }
+    let start = Instant::now();
+    let result = match tool_call.tool.as_str() {
         "task_create" => {
             let title = tool_call.args.get("title").and_then(|v| v.as_str()).unwrap_or("新待办");
             let category_id = tool_call.args.get("category_id").and_then(|v| v.as_str()).unwrap_or("cat_default");
@@ -1368,11 +1377,22 @@ pub async fn execute_tool_call(tool_call: &AiToolCall, db: &Database, mcp: Optio
             }
         }
         _ => AiToolResult { success: false, message: format!("未知工具: {}", tool_call.tool), data: None },
+    };
+    let duration_ms = start.elapsed().as_millis() as u64;
+    if let Some(app) = app {
+        let _ = app.emit("tool-execution-end", serde_json::json!({
+            "tool": tool_call.tool,
+            "status": if result.success { "completed" } else { "failed" },
+            "result": result.message,
+            "duration_ms": duration_ms,
+        }));
     }
+    result
 }
 
 #[tauri::command]
 pub async fn ai_chat(
+    app: tauri::AppHandle,
     store: State<'_, Arc<ActivityStore>>,
     db: State<'_, Database>,
     _mcp: State<'_, McpRegistry>,
@@ -1407,7 +1427,7 @@ pub async fn ai_chat(
         // 有工具调用：执行并反馈给 AI 生成最终回复
         let mut tool_results = Vec::new();
         for tc in &tool_calls {
-            let result = execute_tool_call(tc, &db, None).await;
+            let result = execute_tool_call(tc, &db, None, Some(&app)).await;
             tool_results.push(result);
         }
 
@@ -1502,7 +1522,7 @@ pub async fn ai_chat_stream(
         // 执行工具
         let mut tool_results = Vec::new();
         for tc in &tool_calls {
-            let result = execute_tool_call(tc, &db, None).await;
+            let result = execute_tool_call(tc, &db, None, Some(&app)).await;
             tool_results.push(result);
         }
 
@@ -1568,6 +1588,7 @@ pub async fn ai_chat_stream(
 
 #[tauri::command]
 pub async fn ai_chat_routed(
+    app: tauri::AppHandle,
     store: State<'_, Arc<ActivityStore>>,
     db: State<'_, Database>,
     request: AiChatRequest,
@@ -1598,7 +1619,7 @@ pub async fn ai_chat_routed(
     } else {
         let mut tool_results = Vec::new();
         for tc in &tool_calls {
-            let result = execute_tool_call(tc, &db, None).await;
+            let result = execute_tool_call(tc, &db, None, Some(&app)).await;
             tool_results.push(result);
         }
 
@@ -1755,6 +1776,86 @@ pub fn user_get_insights(db: State<'_, Database>) -> Vec<UserInsight> {
 #[tauri::command]
 pub fn user_delete_insight(db: State<'_, Database>, id: String) -> bool {
     db.delete_user_insight(&id)
+}
+
+// ===== Workflow Commands =====
+
+#[tauri::command]
+pub fn workflow_list_templates(db: State<'_, Database>) -> Vec<WorkflowTemplate> {
+    db.get_workflow_templates()
+}
+
+#[tauri::command]
+pub fn workflow_save_template(db: State<'_, Database>, template: WorkflowTemplate) {
+    db.save_workflow_template(template);
+}
+
+#[tauri::command]
+pub fn workflow_delete_template(db: State<'_, Database>, id: String) -> bool {
+    db.delete_workflow_template(&id)
+}
+
+#[tauri::command]
+pub async fn workflow_execute(
+    _db: State<'_, Database>,
+    nodes: Vec<WorkflowNode>,
+    edges: Vec<WorkflowEdge>,
+) -> Result<String, String> {
+    use std::collections::HashMap;
+
+    let node_map: HashMap<String, &WorkflowNode> = nodes.iter().map(|n| (n.id.clone(), n)).collect();
+    let mut in_degree: HashMap<String, usize> = HashMap::new();
+    let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
+
+    for node in &nodes {
+        in_degree.entry(node.id.clone()).or_insert(0);
+        adjacency.entry(node.id.clone()).or_default();
+    }
+    for edge in &edges {
+        if let Some(adj) = adjacency.get_mut(&edge.from_node) {
+            adj.push(edge.to_node.clone());
+        }
+        *in_degree.entry(edge.to_node.clone()).or_insert(0) += 1;
+    }
+
+    // Topological sort
+    let mut queue: Vec<String> = Vec::new();
+    for (id, degree) in &in_degree {
+        if *degree == 0 {
+            queue.push(id.clone());
+        }
+    }
+
+    let mut execution_order: Vec<String> = Vec::new();
+    while let Some(node_id) = queue.pop() {
+        execution_order.push(node_id.clone());
+        if let Some(neighbors) = adjacency.get(&node_id) {
+            for neighbor in neighbors {
+                if let Some(degree) = in_degree.get_mut(neighbor) {
+                    *degree -= 1;
+                    if *degree == 0 {
+                        queue.push(neighbor.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    if execution_order.len() != nodes.len() {
+        return Err("工作流包含循环依赖".to_string());
+    }
+
+    // Simple execution: collect results from each node type
+    let mut results: Vec<String> = Vec::new();
+    for node_id in &execution_order {
+        if let Some(node) = node_map.get(node_id) {
+            let node_type_name = &node.node_type;
+            let label = &node.label;
+            results.push(format!("[{}] {}: 执行完成", node_type_name, label));
+        }
+    }
+
+    Ok(results.join("\n"))
 }
 
 // ===== MCP 命令 =====

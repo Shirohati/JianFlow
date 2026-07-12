@@ -140,7 +140,7 @@ impl AgentOrchestrator {
 
                 let mut tool_messages = Vec::new();
                 for tc in &tool_calls {
-                    let result = commands::execute_tool_call(tc, db, None).await;
+                    let result = commands::execute_tool_call(tc, db, None, None).await;
                     tool_messages.push(format!(
                         "{}{}",
                         if result.success { "✅ " } else { "❌ " },

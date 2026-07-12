@@ -1333,4 +1333,34 @@ impl Database {
         }
         deleted
     }
+
+    // ===== Workflow Templates =====
+
+    pub fn get_workflow_templates(&self) -> Vec<WorkflowTemplate> {
+        let data = self.data.lock().unwrap();
+        data.workflow_templates.clone()
+    }
+
+    pub fn save_workflow_template(&self, template: WorkflowTemplate) {
+        let mut data = self.data.lock().unwrap();
+        if let Some(existing) = data.workflow_templates.iter_mut().find(|t| t.id == template.id) {
+            *existing = template;
+        } else {
+            data.workflow_templates.push(template);
+        }
+        drop(data);
+        self.save();
+    }
+
+    pub fn delete_workflow_template(&self, id: &str) -> bool {
+        let mut data = self.data.lock().unwrap();
+        let before = data.workflow_templates.len();
+        data.workflow_templates.retain(|t| t.id != id);
+        let deleted = data.workflow_templates.len() < before;
+        drop(data);
+        if deleted {
+            self.save();
+        }
+        deleted
+    }
 }

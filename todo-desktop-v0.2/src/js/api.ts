@@ -475,6 +475,36 @@ export const mcpApi = {
   callTool: (request: McpToolCallRequest) => invoke<McpToolCallResult>('mcp_call_tool', { request }),
 };
 
+export interface WorkflowNode {
+  id: string;
+  node_type: string;
+  label: string;
+  x: number;
+  y: number;
+  config: Record<string, any>;
+}
+
+export interface WorkflowEdge {
+  id: string;
+  from_node: string;
+  to_node: string;
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}
+
+export const workflowApi = {
+  listTemplates: () => invoke<WorkflowTemplate[]>('workflow_list_templates'),
+  saveTemplate: (template: WorkflowTemplate) => invoke<void>('workflow_save_template', { template }),
+  deleteTemplate: (id: string) => invoke<boolean>('workflow_delete_template', { id }),
+  execute: (nodes: WorkflowNode[], edges: WorkflowEdge[]) => invoke<string>('workflow_execute', { nodes, edges }),
+};
+
 export interface StreamCallbacks {
   onToken: (token: string) => void;
   onReasoning: (reasoning: string) => void;

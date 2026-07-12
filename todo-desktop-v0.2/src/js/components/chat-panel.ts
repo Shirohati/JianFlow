@@ -1,6 +1,8 @@
 import { taskApi, activityApi, goalApi, conversationApi, streamChat, personaApi, userApi } from '../api';
 import { store } from '../store';
 import { initIcons, getIconHTML } from '../icons';
+import { listen } from '@tauri-apps/api/event';
+import { ToolInspector } from './tool-inspector';
 import type { AiChatRequest, Conversation, AiPersona, UserProfile } from '../api';
 
 interface ChatMessage {
@@ -34,6 +36,8 @@ let userProfile: UserProfile | null = null;
 let userScrolledUp = false;
 let lastStreamMsgIdx = -1; // index of the message being streamed into
 let lastBriefDate = '';
+let toolInspector: ToolInspector | null = null;
+let toolCleanup: (() => void) | null = null;
 
 function esc(str: string): string {
   const m: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
@@ -381,6 +385,7 @@ async function send(): Promise<void> {
     chatPanel.enableInput();
     if (stopBtn) stopBtn.style.display = 'none';
     hideExecStatus();
+    if (toolCleanup) { toolCleanup(); toolCleanup = null; }
     const ct = el('chatMessages');
     const dots = ct?.querySelector('.chat-typing-dots');
     if (dots) dots.remove();
@@ -444,6 +449,19 @@ async function send(): Promise<void> {
         cleanupStream();
       },
     });
+
+    if (toolInspector) {
+      toolInspector.clear();
+      const toolU1 = await listen<any>('tool-execution-start', (event) => {
+        toolInspector!.addExecution(event.payload);
+        const inspectorEl = el('chatToolInspector');
+        if (inspectorEl) inspectorEl.style.display = 'block';
+      });
+      const toolU2 = await listen<any>('tool-execution-end', (event) => {
+        toolInspector!.updateExecution(event.payload.tool, event.payload);
+      });
+      toolCleanup = () => { toolU1(); toolU2(); };
+    }
   } catch (err: any) {
     messages[lastStreamMsgIdx] = { role: 'assistant', content: '抱歉，出了点问题：' + (err?.message || String(err)) + '\n\n请检查 AI 配置是否正确。' };
     updateStreamMsg(messages[lastStreamMsgIdx].content);
@@ -490,6 +508,13 @@ export const chatPanel = {
           <span class="chat-exec-spinner"></span>
           <span class="chat-exec-text">正在执行操作…</span>
         </div>
+        <div id="chatToolInspector" class="chat-tool-inspector" style="display:none">
+          <div class="chat-tool-inspector-header">
+            <span>🔧 工具调用</span>
+            <button id="chatToolInspectorToggle" class="btn btn--ghost btn--icon">−</button>
+          </div>
+          <div id="chatToolInspectorContent" class="chat-tool-inspector-content"></div>
+        </div>
         <div class="chat-input-area">
           <textarea id="chatInput" class="chat-input" placeholder="输入消息..." rows="2"></textarea>
           <button id="chatSendBtn" class="btn btn--primary btn--icon">${getIconHTML('send', { size: '16' })}</button>
@@ -498,6 +523,10 @@ export const chatPanel = {
         <div id="chatProfilePanel" class="chat-profile-panel"></div>
       </div>`;
     document.body.appendChild(container);
+    const inspectorContent = el('chatToolInspectorContent');
+    if (inspectorContent) {
+      toolInspector = new ToolInspector(inspectorContent);
+    }
     this.bindEvents();
     initIcons();
     loadConversations();
@@ -573,6 +602,16 @@ export const chatPanel = {
       if (!id) return;
       try { await userApi.deleteInsight(id); await loadUserProfile(); } catch { /* ignore */ }
     });
+
+    // Tool inspector toggle
+    el('chatToolInspectorToggle')?.addEventListener('click', () => {
+      const content = el('chatToolInspectorContent');
+      const toggle = el('chatToolInspectorToggle');
+      if (!content || !toggle) return;
+      const isOpen = content.style.display !== 'none';
+      content.style.display = isOpen ? 'none' : 'block';
+      toggle.textContent = isOpen ? '+' : '−';
+    });
   },
 
   toggle(): void { this.isOpen ? this.close() : this.open(); },
@@ -610,6 +649,7 @@ export const chatPanel = {
 
   abort(): void {
     if (streamingCleanup) { streamingCleanup(); streamingCleanup = null; }
+    if (toolCleanup) { toolCleanup(); toolCleanup = null; }
     this.streaming = false;
     this.enableInput();
     const stopBtn = el('chatStopBtn');

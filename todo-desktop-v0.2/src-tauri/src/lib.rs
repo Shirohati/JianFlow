@@ -259,6 +259,11 @@ pub fn run() {
             commands::mcp_disconnect_server,
             commands::mcp_get_tools,
             commands::mcp_call_tool,
+            // P4 Workflow
+            commands::workflow_list_templates,
+            commands::workflow_save_template,
+            commands::workflow_delete_template,
+            commands::workflow_execute,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

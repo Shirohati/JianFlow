@@ -14,6 +14,7 @@ import { pomodoroPage } from './js/pages/pomodoro';
 import { reportPage } from './js/pages/report';
 import { dailyReportPage } from './js/pages/daily-report';
 import { calendarPage } from './js/pages/calendar';
+import { workflowPage } from './js/pages/workflow';
 import { settingsPage } from './js/pages/settings';
 import { history } from './js/history';
 import { chatPanel } from './js/components/chat-panel';
@@ -32,6 +33,7 @@ async function init() {
   router.onPageEnter('report', () => reportPage.init());
   router.onPageEnter('daily-report', () => dailyReportPage.init());
   router.onPageEnter('calendar', () => calendarPage.init());
+  router.onPageEnter('workflow', () => workflowPage.init());
   router.onPageEnter('settings', () => settingsPage.init());
 
   initIcons();

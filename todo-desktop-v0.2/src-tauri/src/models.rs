@@ -225,6 +225,8 @@ pub struct AppData {
     #[serde(default)]
     pub conversations: Vec<Conversation>,
     #[serde(default)]
+    pub workflow_templates: Vec<WorkflowTemplate>,
+    #[serde(default)]
     pub user_profile: UserProfile,
     pub version: String,
 }
@@ -278,6 +280,7 @@ impl Default for AppData {
             vector_memories: Vec::new(),
             memory_graph: MemoryGraph::default(),
             conversations: Vec::new(),
+            workflow_templates: Vec::new(),
             user_profile: UserProfile::default(),
             version: "0.1.1".into(),
         }
@@ -668,6 +671,34 @@ pub struct ScheduledTask {
     pub last_run: Option<String>,
     pub next_run: Option<String>,
     pub context: String,
+}
+
+// ===== P4 Visual Workflow Builder =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WorkflowNode {
+    pub id: String,
+    pub node_type: String,
+    pub label: String,
+    pub x: i32,
+    pub y: i32,
+    pub config: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WorkflowEdge {
+    pub id: String,
+    pub from_node: String,
+    pub to_node: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WorkflowTemplate {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub nodes: Vec<WorkflowNode>,
+    pub edges: Vec<WorkflowEdge>,
 }
 
 // ===== P5 Token Efficiency Engine =====
