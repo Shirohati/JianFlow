@@ -1,13 +1,20 @@
 mod activity;
+mod ai_agent;
+mod ai_memory;
+mod ai_ollama;
+mod ai_router;
+mod ai_scheduler;
 mod ai_service;
 mod commands;
 mod database;
 mod learning;
+mod mcp;
 mod models;
 mod reminder;
 
 use activity::{ActivityMonitor, ActivityStore};
 use database::Database;
+use mcp::McpRegistry;
 use reminder::ReminderEngine;
 use std::sync::Arc;
 use tauri::{
@@ -32,6 +39,9 @@ pub fn run() {
             }
             let db_for_reminder = db.clone();
             app.manage(db);
+
+            // MCP 协议注册表
+            app.manage(McpRegistry::new());
 
             // v0.2 活动监测：创建独立 ActivityStore 与 ActivityMonitor
             let store = Arc::new(ActivityStore::new(app_data_dir));
@@ -218,6 +228,10 @@ pub fn run() {
             // v0.2 AI 对话
             commands::ai_chat,
             commands::ai_chat_stream,
+            // P5 Token Efficiency Engine
+            commands::ai_chat_routed,
+            commands::ai_get_token_stats,
+            commands::ai_check_ollama,
             // v0.2 评分历史
             commands::get_daily_score_history,
             // v0.2 提醒控制
@@ -237,6 +251,14 @@ pub fn run() {
             commands::user_analyze,
             commands::user_get_insights,
             commands::user_delete_insight,
+            // v0.2 MCP
+            commands::mcp_list_servers,
+            commands::mcp_add_server,
+            commands::mcp_remove_server,
+            commands::mcp_connect_server,
+            commands::mcp_disconnect_server,
+            commands::mcp_get_tools,
+            commands::mcp_call_tool,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

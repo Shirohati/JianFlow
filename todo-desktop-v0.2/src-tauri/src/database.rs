@@ -1227,6 +1227,70 @@ impl Database {
         count
     }
 
+    // ---- 向量记忆 ----
+
+    pub fn get_vector_memories(&self) -> Vec<crate::models::VectorMemory> {
+        let data = self.data.lock().unwrap();
+        data.vector_memories.clone()
+    }
+
+    pub fn save_vector_memory(&self, mem: crate::models::VectorMemory) {
+        let mut data = self.data.lock().unwrap();
+        if let Some(existing) = data.vector_memories.iter_mut().find(|m| m.id == mem.id) {
+            *existing = mem;
+        } else {
+            data.vector_memories.push(mem);
+        }
+        drop(data);
+        self.save();
+    }
+
+    pub fn update_vector_memory(&self, id: &str, updates: serde_json::Value) -> Option<crate::models::VectorMemory> {
+        let mut data = self.data.lock().unwrap();
+        let mem = data.vector_memories.iter_mut().find(|m| m.id == id)?;
+        if let Some(v) = updates.get("content").and_then(|v| v.as_str()) {
+            mem.content = v.to_string();
+        }
+        if let Some(v) = updates.get("memory_type").and_then(|v| v.as_str()) {
+            mem.memory_type = v.to_string();
+        }
+        if let Some(v) = updates.get("importance").and_then(|v| v.as_f64()) {
+            mem.importance = v;
+        }
+        if let Some(v) = updates.get("decay_rate").and_then(|v| v.as_f64()) {
+            mem.decay_rate = v;
+        }
+        mem.last_accessed = now_str();
+        let result = mem.clone();
+        drop(data);
+        self.save();
+        Some(result)
+    }
+
+    pub fn delete_vector_memory(&self, id: &str) -> bool {
+        let mut data = self.data.lock().unwrap();
+        let before = data.vector_memories.len();
+        data.vector_memories.retain(|m| m.id != id);
+        let deleted = data.vector_memories.len() < before;
+        drop(data);
+        if deleted {
+            self.save();
+        }
+        deleted
+    }
+
+    pub fn get_memory_graph(&self) -> crate::models::MemoryGraph {
+        let data = self.data.lock().unwrap();
+        data.memory_graph.clone()
+    }
+
+    pub fn save_memory_graph(&self, graph: crate::models::MemoryGraph) {
+        let mut data = self.data.lock().unwrap();
+        data.memory_graph = graph;
+        drop(data);
+        self.save();
+    }
+
     // ---- 用户画像 ----
 
     pub fn get_user_profile(&self) -> crate::models::UserProfile {

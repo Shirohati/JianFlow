@@ -1,3 +1,4 @@
+use crate::ai_router::{ComplexityClassifier, ModelRouter, TaskComplexity};
 use crate::models::{ActivitySettings, ActivitySummary, AiPersona, AiToolCall, ConversationMessage, ProductivityScore, UserProfile};
 use futures_util::StreamExt;
 
@@ -231,7 +232,21 @@ pub fn build_persona_dynamic_prompt(profile: &UserProfile, persona_id: &str) -> 
     lines.join("\n")
 }
 
-/// 通用对话（带用户画像）
+/// 构建记忆上下文提示
+pub fn build_memory_context(
+    profile: &UserProfile,
+    message: &str,
+    vector_memories: &[crate::models::VectorMemory],
+    max_memories: usize,
+) -> String {
+    if vector_memories.is_empty() && profile.insights.is_empty() {
+        return String::new();
+    }
+    let engine = crate::ai_memory::MemoryEngine::from_vec(vector_memories.to_vec());
+    engine.build_context(message, max_memories)
+}
+
+/// 通用对话（带用户画像和记忆上下文）
 pub async fn chat_with_profile(
     settings: &ActivitySettings,
     history: &[ConversationMessage],
@@ -239,12 +254,13 @@ pub async fn chat_with_profile(
     page: &str,
     page_data: Option<&str>,
     profile: &UserProfile,
+    memory_context: &str,
 ) -> Result<String, String> {
-    let messages = build_messages(settings, history, message, page, page_data, false, Some(profile));
+    let messages = build_messages(settings, history, message, page, page_data, false, Some(profile), memory_context);
     call_ai_api(settings, &messages).await
 }
 
-/// 支持工具调用的对话（带用户画像）
+/// 支持工具调用的对话（带用户画像和记忆上下文）
 pub async fn chat_with_tools_profile(
     settings: &ActivitySettings,
     history: &[ConversationMessage],
@@ -252,8 +268,9 @@ pub async fn chat_with_tools_profile(
     page: &str,
     page_data: Option<&str>,
     profile: &UserProfile,
+    memory_context: &str,
 ) -> Result<String, String> {
-    let messages = build_messages(settings, history, message, page, page_data, true, Some(profile));
+    let messages = build_messages(settings, history, message, page, page_data, true, Some(profile), memory_context);
     call_ai_api(settings, &messages).await
 }
 
@@ -265,6 +282,7 @@ pub fn build_messages(
     page_data: Option<&str>,
     enable_tools: bool,
     profile: Option<&UserProfile>,
+    memory_context: &str,
 ) -> Vec<ConversationMessage> {
     let mut messages = Vec::new();
 
@@ -306,6 +324,13 @@ pub fn build_messages(
                 content: format!("当前页面数据：\n{}", data),
             });
         }
+    }
+
+    if !memory_context.is_empty() {
+        messages.push(ConversationMessage {
+            role: "system".into(),
+            content: memory_context.to_string(),
+        });
     }
 
     // 时间上下文
@@ -474,6 +499,7 @@ pub fn tool_system_prompt(persona_id: &str) -> String {
         ("daily_plan", "date? — 今日规划".into()),
         ("weekly_review", "— 本周回顾".into()),
         ("smart_suggest", "— 当前建议".into()),
+        ("mcp_call", "server_id=auto?,tool,args — 调用 MCP 外部工具(auto自动选匹配的服务器)".into()),
     ];
 
     for (i, (name, desc)) in tools.iter().enumerate() {
@@ -638,6 +664,50 @@ where
     Ok(full_content)
 }
 
+/// 多智能体对话：通过编排器拆解任务，分派给专业智能体
+pub async fn chat_with_agents(
+    settings: &ActivitySettings,
+    history: &[ConversationMessage],
+    message: &str,
+    page: &str,
+    page_data: Option<&str>,
+    profile: &UserProfile,
+    db: &crate::database::Database,
+) -> Result<String, String> {
+    use crate::ai_agent::AgentOrchestrator;
+
+    let orchestrator = AgentOrchestrator::new();
+    let decomposition = orchestrator
+        .decompose(message, history, settings, profile)
+        .await?;
+
+    let mut tasks = decomposition.tasks;
+
+    // 如果只有 Orchestrator 任务，退化为普通对话
+    if tasks.len() == 1 && tasks[0].agent_type == crate::models::AgentType::Orchestrator {
+        return chat_with_tools_profile(settings, history, message, page, page_data, profile, "")
+            .await;
+    }
+
+    for task in &mut tasks {
+        let result = orchestrator
+            .execute_task(task, settings, db)
+            .await;
+        match result {
+            Ok(reply) => {
+                task.status = "completed".into();
+                task.result = Some(reply);
+            }
+            Err(e) => {
+                task.status = "failed".into();
+                task.error = Some(e);
+            }
+        }
+    }
+
+    Ok(orchestrator.merge_results(&tasks, message))
+}
+
 /// 降级模板
 pub fn template_summary(summary: &ActivitySummary, pomo_minutes: i32, todo_total: i32, todo_completed: i32, date: &str) -> String {
     let total_min = summary.total_active_seconds / 60;
@@ -667,6 +737,95 @@ pub fn template_summary(summary: &ActivitySummary, pomo_minutes: i32, todo_total
     }
     lines.push("> 配置 AI API 可获得更智能的分析报告。".to_string());
     lines.join("\n")
+}
+
+/// AI chat with automatic model routing based on complexity
+/// AI chat with automatic model routing based on complexity
+pub async fn chat_with_routing(
+    settings: &ActivitySettings,
+    history: &[ConversationMessage],
+    message: &str,
+    page: &str,
+    page_data: Option<&str>,
+    profile: &UserProfile,
+    enable_tools: bool,
+    memory_context: &str,
+) -> Result<String, String> {
+    let classifier = ComplexityClassifier::new();
+    let router = ModelRouter::new();
+
+    let complexity = classifier.classify(message, history.len(), enable_tools);
+    let (model, max_tokens, temperature) = router.route(&complexity, settings);
+
+    let mut messages = build_messages(settings, history, message, page, page_data, enable_tools, Some(profile), memory_context);
+
+    if complexity <= TaskComplexity::Simple {
+        messages.retain(|m| m.role == "user" || m.role == "assistant");
+        messages.insert(0, ConversationMessage {
+            role: "system".into(),
+            content: router.adapt_prompt(&complexity, "你是一个简洁的 AI 助手。"),
+        });
+    }
+
+    call_ai_api_with_model(settings, &messages, &model, max_tokens, temperature).await
+}
+
+async fn call_ai_api_with_model(
+    settings: &ActivitySettings,
+    messages: &[ConversationMessage],
+    model: &str,
+    max_tokens: u32,
+    temperature: f32,
+) -> Result<String, String> {
+    if settings.ai_api_key.is_empty() {
+        return Err("未配置 API Key".to_string());
+    }
+    let base_url = if settings.ai_api_base_url.is_empty() {
+        "https://api.openai.com/v1".to_string()
+    } else {
+        settings.ai_api_base_url.trim_end_matches('/').to_string()
+    };
+    let url = format!("{}/chat/completions", base_url);
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let req_messages: Vec<serde_json::Value> = messages.iter().map(|m| {
+        serde_json::json!({"role": m.role, "content": m.content})
+    }).collect();
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": req_messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    });
+
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", settings.ai_api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("请求 AI API 失败: {}", e))?;
+
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| format!("读取响应失败: {}", e))?;
+    if !status.is_success() {
+        return Err(format!("AI API 返回错误 {}: {}", status, text));
+    }
+
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("解析响应 JSON 失败: {}", e))?;
+    v.get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "响应中缺少 choices[0].message.content".to_string())
 }
 
 /// 从文本中移除工具调用标记【TOOL】...【/TOOL】，用于保证存储和显示的干净

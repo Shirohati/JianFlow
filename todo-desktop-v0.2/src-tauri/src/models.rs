@@ -219,6 +219,10 @@ pub struct AppData {
     #[serde(default)]
     pub memories: Vec<Memory>,
     #[serde(default)]
+    pub vector_memories: Vec<VectorMemory>,
+    #[serde(default)]
+    pub memory_graph: MemoryGraph,
+    #[serde(default)]
     pub conversations: Vec<Conversation>,
     #[serde(default)]
     pub user_profile: UserProfile,
@@ -271,6 +275,8 @@ impl Default for AppData {
             daily_logs: HashMap::new(),
             daily_scores: Vec::new(),
             memories: Vec::new(),
+            vector_memories: Vec::new(),
+            memory_graph: MemoryGraph::default(),
             conversations: Vec::new(),
             user_profile: UserProfile::default(),
             version: "0.1.1".into(),
@@ -541,6 +547,54 @@ pub struct Memory {
     pub created_at: String,
 }
 
+// ===== P3 向量记忆 =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct VectorMemory {
+    pub id: String,
+    pub content: String,
+    pub memory_type: String,
+    pub source: String,
+    pub importance: f64,
+    pub created_at: String,
+    pub last_accessed: String,
+    pub access_count: u32,
+    pub embedding: Option<Vec<f32>>,
+    pub related_ids: Vec<String>,
+    pub decay_rate: f64,
+    pub metadata: std::collections::HashMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MemoryNode {
+    pub id: String,
+    pub label: String,
+    pub memory_type: String,
+    pub importance: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MemoryEdge {
+    pub from_id: String,
+    pub to_id: String,
+    pub relation: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MemoryGraph {
+    pub nodes: Vec<MemoryNode>,
+    pub edges: Vec<MemoryEdge>,
+}
+
+impl Default for MemoryGraph {
+    fn default() -> Self {
+        MemoryGraph {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+        }
+    }
+}
+
 // ===== v0.2 用户画像 =====
 
 /// 用户画像（持久化到 todo-data.json）
@@ -572,4 +626,65 @@ pub struct UserInsight {
     pub content: String,
     pub source: String,
     pub created_at: String,
+}
+
+// ===== P2/P6 多智能体系统 =====
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum AgentType {
+    Orchestrator,
+    Planner,
+    Analyst,
+    Executor,
+    Memory,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentTask {
+    pub id: String,
+    pub agent_type: AgentType,
+    pub instruction: String,
+    pub context: String,
+    pub requires_tools: bool,
+    pub status: String,
+    pub result: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskDecomposition {
+    pub tasks: Vec<AgentTask>,
+    pub reasoning: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduledTask {
+    pub id: String,
+    pub name: String,
+    pub cron_expression: String,
+    pub agent_type: String,
+    pub instruction: String,
+    pub enabled: bool,
+    pub last_run: Option<String>,
+    pub next_run: Option<String>,
+    pub context: String,
+}
+
+// ===== P5 Token Efficiency Engine =====
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct TokenUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct CostRecord {
+    pub date: String,
+    pub model: String,
+    pub tokens_input: u64,
+    pub tokens_output: u64,
+    pub cost: f64,
+    pub complexity: String,
 }

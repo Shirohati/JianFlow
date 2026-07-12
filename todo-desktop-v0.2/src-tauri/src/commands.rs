@@ -1,7 +1,10 @@
 use crate::activity::{ActivityMonitor, ActivityStore};
+use crate::ai_ollama::OllamaClient;
+use crate::ai_router::CostTracker;
 use crate::ai_service;
 use crate::database::Database;
 use crate::learning;
+use crate::mcp::McpRegistry;
 use crate::models::*;
 use crate::reminder::ReminderEngine;
 use serde_json::Value;
@@ -815,7 +818,7 @@ pub async fn activity_get_productivity_score(
 
 // --- AI 对话 ---
 
-fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
+pub async fn execute_tool_call(tool_call: &AiToolCall, db: &Database, mcp: Option<&McpRegistry>) -> AiToolResult {
     match tool_call.tool.as_str() {
         "task_create" => {
             let title = tool_call.args.get("title").and_then(|v| v.as_str()).unwrap_or("新待办");
@@ -1324,6 +1327,46 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
             let summary = format!("当前{time_label}，今日待办{tt}项已完成{td}项，剩余{}项（{}项高优先级）。", active.len(), high_pri);
             AiToolResult { success: true, message: summary, data: Some(data) }
         }
+        "mcp_call" => {
+            let server_id = tool_call.args.get("server_id").and_then(|v| v.as_str()).unwrap_or("auto");
+            let tool = tool_call.args.get("tool").and_then(|v| v.as_str()).unwrap_or("");
+            let args = tool_call.args.get("args").cloned().unwrap_or(Value::Null);
+
+            if let Some(mcp_registry) = mcp {
+                if tool.is_empty() {
+                    return AiToolResult { success: false, message: "缺少 tool 参数".into(), data: None };
+                }
+
+                let tools = mcp_registry.get_all_tools();
+                let target_server = if server_id == "auto" {
+                    let best = tools.iter().find(|t| t.name == tool).or_else(|| tools.first());
+                    match best {
+                        Some(t) => t.server_id.clone(),
+                        None => return AiToolResult { success: false, message: format!("未找到可用的 MCP 工具「{}」", tool), data: None },
+                    }
+                } else {
+                    server_id.to_string()
+                };
+
+                match mcp_registry.call_tool(&target_server, tool, args).await {
+                    Ok(result) => {
+                        let text_content: Vec<String> = result.content.iter().filter_map(|c| {
+                            if let crate::mcp::McpContentItem::Text { text } = c {
+                                Some(text.clone())
+                            } else { None }
+                        }).collect();
+                        AiToolResult {
+                            success: result.success,
+                            message: if !text_content.is_empty() { text_content.join("\n") } else { "工具调用完成".to_string() },
+                            data: Some(serde_json::json!({"raw": result})),
+                        }
+                    }
+                    Err(e) => AiToolResult { success: false, message: format!("MCP 调用失败: {}", e), data: None },
+                }
+            } else {
+                AiToolResult { success: false, message: "MCP 未初始化".into(), data: None }
+            }
+        }
         _ => AiToolResult { success: false, message: format!("未知工具: {}", tool_call.tool), data: None },
     }
 }
@@ -1332,6 +1375,7 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
 pub async fn ai_chat(
     store: State<'_, Arc<ActivityStore>>,
     db: State<'_, Database>,
+    _mcp: State<'_, McpRegistry>,
     request: AiChatRequest,
 ) -> Result<AiChatResponse, String> {
     let settings = store.get_settings();
@@ -1350,6 +1394,7 @@ pub async fn ai_chat(
         &request.page,
         request.page_data.as_deref(),
         &profile,
+        "",
     )
     .await?;
 
@@ -1362,7 +1407,7 @@ pub async fn ai_chat(
         // 有工具调用：执行并反馈给 AI 生成最终回复
         let mut tool_results = Vec::new();
         for tc in &tool_calls {
-            let result = execute_tool_call(tc, &db);
+            let result = execute_tool_call(tc, &db, None).await;
             tool_results.push(result);
         }
 
@@ -1376,7 +1421,7 @@ pub async fn ai_chat(
 
         let followup_msg = format!("以上工具调用的执行结果：\n{}\n\n请根据结果向用户做出最终回复。", tool_summary.join("\n"));
 
-        ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile).await?
+        ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile, "").await?
     };
 
     let clean_reply = ai_service::strip_tool_calls(&final_reply);
@@ -1423,6 +1468,7 @@ pub async fn ai_chat_stream(
     app: tauri::AppHandle,
     store: State<'_, Arc<ActivityStore>>,
     db: State<'_, Database>,
+    _mcp: State<'_, McpRegistry>,
     request: AiChatRequest,
 ) -> Result<(), String> {
     let settings = store.get_settings();
@@ -1434,7 +1480,7 @@ pub async fn ai_chat_stream(
     // 获取用户画像
     let profile = db.get_user_profile();
 
-    let messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), true, Some(&profile));
+    let messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), true, Some(&profile), "");
 
     let app_token = app.clone();
     let app_reason = app.clone();
@@ -1456,7 +1502,7 @@ pub async fn ai_chat_stream(
         // 执行工具
         let mut tool_results = Vec::new();
         for tc in &tool_calls {
-            let result = execute_tool_call(tc, &db);
+            let result = execute_tool_call(tc, &db, None).await;
             tool_results.push(result);
         }
 
@@ -1470,7 +1516,7 @@ pub async fn ai_chat_stream(
 
         let followup_msg = format!("以上工具调用的执行结果：\n{}\n\n请根据结果向用户做出最终回复。", tool_summary.join("\n"));
 
-        ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile).await?
+        ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile, "").await?
     };
 
     // 保证存储和显示的回复不含工具调用标记
@@ -1517,6 +1563,107 @@ pub async fn ai_chat_stream(
 
     Ok(())
 }
+
+// --- P5 Token Efficiency Engine ---
+
+#[tauri::command]
+pub async fn ai_chat_routed(
+    store: State<'_, Arc<ActivityStore>>,
+    db: State<'_, Database>,
+    request: AiChatRequest,
+) -> Result<AiChatResponse, String> {
+    let settings = store.get_settings();
+    if !settings.ai_api_enabled || settings.ai_api_key.is_empty() {
+        return Err("AI 未启用，请先在设置页配置 AI API".to_string());
+    }
+
+    let profile = db.get_user_profile();
+
+    let reply = ai_service::chat_with_routing(
+        &settings,
+        &request.history,
+        &request.message,
+        &request.page,
+        request.page_data.as_deref(),
+        &profile,
+        true,
+        "",
+    )
+    .await?;
+
+    let tool_calls = ai_service::parse_tool_calls(&reply);
+
+    let final_reply = if tool_calls.is_empty() {
+        reply
+    } else {
+        let mut tool_results = Vec::new();
+        for tc in &tool_calls {
+            let result = execute_tool_call(tc, &db, None).await;
+            tool_results.push(result);
+        }
+
+        let mut followup_history = request.history.clone();
+        followup_history.push(ConversationMessage { role: "user".into(), content: request.message.clone() });
+        followup_history.push(ConversationMessage { role: "assistant".into(), content: reply.clone() });
+
+        let tool_summary: Vec<String> = tool_results.iter().map(|r| {
+            if r.success { format!("✅ 操作成功：{}", r.message) } else { format!("❌ 操作失败：{}", r.message) }
+        }).collect();
+
+        let followup_msg = format!("以上工具调用的执行结果：\n{}\n\n请根据结果向用户做出最终回复。", tool_summary.join("\n"));
+
+        ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile, "").await?
+    };
+
+    let clean_reply = ai_service::strip_tool_calls(&final_reply);
+
+    let mut db_messages: Vec<ConversationMessage> = request.history.clone();
+    db_messages.push(ConversationMessage { role: "user".into(), content: request.message.clone() });
+    db_messages.push(ConversationMessage { role: "assistant".into(), content: clean_reply.clone() });
+    let conv = Conversation {
+        id: request.session_id.clone(),
+        title: String::new(),
+        messages: db_messages,
+        created_at: String::new(),
+        updated_at: String::new(),
+    };
+    db.save_conversation(conv);
+
+    if settings.ai_api_enabled && !settings.ai_api_key.is_empty() {
+        let settings_clone = settings.clone();
+        let history_clone = request.history.clone();
+        let user_msg = request.message.clone();
+        let reply_clone = clean_reply.clone();
+        let db_clone = db.inner().clone();
+        tokio::spawn(async move {
+            match learning::extract_from_conversation(&settings_clone, &history_clone, &user_msg, &reply_clone).await {
+                Ok(insights) => {
+                    if !insights.is_empty() {
+                        for insight in insights {
+                            db_clone.add_user_insight(insight);
+                        }
+                    }
+                }
+                Err(_) => {}
+            }
+        });
+    }
+
+    Ok(AiChatResponse { session_id: request.session_id, reply: clean_reply })
+}
+
+#[tauri::command]
+pub async fn ai_get_token_stats() -> Result<CostTracker, String> {
+    Ok(CostTracker::default())
+}
+
+#[tauri::command]
+pub async fn ai_check_ollama() -> Result<bool, String> {
+    let client = OllamaClient::new();
+    Ok(client.is_available())
+}
+
+// --- 人设 ---
 
 // --- 人设 ---
 
@@ -1608,4 +1755,44 @@ pub fn user_get_insights(db: State<'_, Database>) -> Vec<UserInsight> {
 #[tauri::command]
 pub fn user_delete_insight(db: State<'_, Database>, id: String) -> bool {
     db.delete_user_insight(&id)
+}
+
+// ===== MCP 命令 =====
+
+#[tauri::command]
+pub fn mcp_list_servers(mcp: State<'_, McpRegistry>) -> Vec<crate::mcp::McpServerStatus> {
+    mcp.get_servers()
+}
+
+#[tauri::command]
+pub fn mcp_add_server(mcp: State<'_, McpRegistry>, config: crate::mcp::McpServerConfig) -> Result<(), String> {
+    mcp.register_server(config)
+}
+
+#[tauri::command]
+pub fn mcp_remove_server(mcp: State<'_, McpRegistry>, id: String) -> bool {
+    mcp.remove_server(&id)
+}
+
+#[tauri::command]
+pub async fn mcp_connect_server(mcp: State<'_, McpRegistry>, id: String) -> Result<(), String> {
+    mcp.connect_server(&id).await
+}
+
+#[tauri::command]
+pub async fn mcp_disconnect_server(mcp: State<'_, McpRegistry>, id: String) -> Result<(), String> {
+    mcp.disconnect_server(&id).await
+}
+
+#[tauri::command]
+pub fn mcp_get_tools(mcp: State<'_, McpRegistry>, server_id: String) -> Result<Vec<crate::mcp::McpToolDefinition>, String> {
+    mcp.get_tools(&server_id)
+}
+
+#[tauri::command]
+pub async fn mcp_call_tool(
+    mcp: State<'_, McpRegistry>,
+    request: crate::mcp::McpToolCallRequest,
+) -> Result<crate::mcp::McpToolCallResult, String> {
+    mcp.call_tool(&request.server_id, &request.tool_name, request.arguments).await
 }

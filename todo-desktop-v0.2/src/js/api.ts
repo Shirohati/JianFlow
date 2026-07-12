@@ -422,6 +422,59 @@ export const userApi = {
   deleteInsight: (id: string) => invoke<boolean>('user_delete_insight', { id }),
 };
 
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  transport: string;
+  command?: string | null;
+  args?: string[] | null;
+  url?: string | null;
+  enabled: boolean;
+}
+
+export interface McpServerStatus {
+  id: string;
+  name: string;
+  connected: boolean;
+  tools_count: number;
+  error?: string | null;
+}
+
+export interface McpToolDefinition {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+  server_id: string;
+}
+
+export interface McpToolCallRequest {
+  server_id: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface McpContentItem {
+  type: 'text' | 'resource';
+  text?: string;
+  resource?: Record<string, unknown>;
+}
+
+export interface McpToolCallResult {
+  success: boolean;
+  content: McpContentItem[];
+  error?: string | null;
+}
+
+export const mcpApi = {
+  listServers: () => invoke<McpServerStatus[]>('mcp_list_servers'),
+  addServer: (config: McpServerConfig) => invoke<void>('mcp_add_server', { config }),
+  removeServer: (id: string) => invoke<boolean>('mcp_remove_server', { id }),
+  connectServer: (id: string) => invoke<void>('mcp_connect_server', { id }),
+  disconnectServer: (id: string) => invoke<void>('mcp_disconnect_server', { id }),
+  getTools: (serverId: string) => invoke<McpToolDefinition[]>('mcp_get_tools', { serverId }),
+  callTool: (request: McpToolCallRequest) => invoke<McpToolCallResult>('mcp_call_tool', { request }),
+};
+
 export interface StreamCallbacks {
   onToken: (token: string) => void;
   onReasoning: (reasoning: string) => void;

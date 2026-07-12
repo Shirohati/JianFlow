@@ -1,6 +1,6 @@
 import { store } from '../store';
-import { settingsApi, categoryApi, statsApi, timeRecordApi, timeTypeApi, presetApi, goalApi, countdownApi, activityApi, aiApi, reminderApi, personaApi, userApi } from '../api';
-import type { AiPersona, UserInsight } from '../api';
+import { settingsApi, categoryApi, statsApi, timeRecordApi, timeTypeApi, presetApi, goalApi, countdownApi, activityApi, aiApi, reminderApi, personaApi, userApi, mcpApi } from '../api';
+import type { AiPersona, UserInsight, McpServerConfig, McpServerStatus, McpToolDefinition } from '../api';
 import { initIcons } from '../icons';
 import { toast } from '../components/toast';
 import { modal } from '../components/modal';
@@ -20,6 +20,10 @@ let activityBatches: ActivityBatch[] = [];
 
 // 人设列表
 let personaList: AiPersona[] = [];
+
+// MCP 服务器列表
+let mcpServers: McpServerStatus[] = [];
+let mcpTools: Record<string, McpToolDefinition[]> = {};
 
 function activityStatusBadge(state: ActivityState | null, settings: ActivitySettings | null): string {
   if (!settings || !settings.monitor_enabled) {
@@ -77,6 +81,19 @@ export const settingsPage = {
     } catch (err) {
       console.error('persona list load failed:', err);
       personaList = [];
+    }
+
+    // 加载 MCP 服务器
+    try {
+      mcpServers = await mcpApi.listServers();
+      for (const s of mcpServers) {
+        if (s.connected) {
+          try { mcpTools[s.id] = await mcpApi.getTools(s.id); } catch { mcpTools[s.id] = []; }
+        }
+      }
+    } catch (err) {
+      console.error('mcp servers load failed:', err);
+      mcpServers = [];
     }
 
     settingsPage.render(inner, settings, categories, timeTypes, presets, goals, countdowns);
@@ -459,6 +476,38 @@ export const settingsPage = {
         </div>
       </div>
 
+      <div class="settings-section" id="mcpSection">
+        <h3 class="settings-section-title">${icon('server', 'size="14"')} 🔌 MCP 服务器</h3>
+        <div id="mcpServersList">
+          ${mcpServers.length === 0 ? '<div style="font-size:var(--text-xs);color:var(--text-lighter);padding:var(--space-2)">暂无 MCP 服务器</div>' : mcpServers.map(s => `
+            <div class="settings-category-item" data-mcp-id="${s.id}">
+              <span class="settings-category-dot" style="background:${s.connected ? '#4caf84' : '#8e8e8e'}"></span>
+              <span class="settings-category-name">${utils.escapeHtml(s.name)}</span>
+              <span class="badge ${s.connected ? 'badge--success' : 'badge--ghost'}" style="font-size:var(--text-xs)">${s.connected ? '已连接' : '未连接'} ${s.tools_count > 0 ? `(${s.tools_count} 工具)` : ''}</span>
+              ${s.connected
+                ? `<button class="btn btn--ghost btn--sm mcp-disconnect" data-mcp-id="${s.id}" title="断开">${icon('plug', 'size="14"')} 断开</button><button class="btn btn--ghost btn--sm mcp-show-tools" data-mcp-id="${s.id}" title="查看工具">${icon('list', 'size="14"')}</button>`
+                : `<button class="btn btn--ghost btn--sm mcp-connect" data-mcp-id="${s.id}" title="连接">${icon('plug', 'size="14"')} 连接</button>`
+              }
+              <button class="btn btn--ghost btn--sm mcp-remove" data-mcp-id="${s.id}" title="删除">${icon('trash-2', 'size="14"')}</button>
+            </div>
+          `).join('')}
+        </div>
+        <div class="mcp-tools-panel" id="mcpToolsPanel" style="display:none;margin-top:var(--space-2)"></div>
+        <details style="margin-top:var(--space-2)">
+          <summary style="font-size:var(--text-xs);cursor:pointer;color:var(--text-lighter)">${icon('plus', 'size="12"')} 添加服务器</summary>
+          <div class="mcp-add-form" style="display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-2)">
+            <input class="input input--sm mcp-name-input" placeholder="名称" style="width:100px" />
+            <select class="input input--sm mcp-transport-select" style="width:80px">
+              <option value="http">HTTP</option>
+              <option value="stdio">STDIO</option>
+            </select>
+            <input class="input input--sm mcp-url-input" placeholder="URL (http://...)" style="width:200px" />
+            <input class="input input--sm mcp-cmd-input" placeholder="命令 (stdio)" style="width:140px;display:none" />
+            <button class="btn btn--primary btn--sm" id="mcpAddBtn">${icon('plus', 'size="14"')} 添加</button>
+          </div>
+        </details>
+      </div>
+
       <div class="settings-section">
         <h3 class="settings-section-title">${icon('database', 'size="14"')} 📥 活动数据管理</h3>
         <div class="settings-row" style="flex-wrap:wrap;gap:var(--space-2)">
@@ -835,6 +884,7 @@ export const settingsPage = {
     });
 
     settingsPage.bindActivityEvents(container);
+    settingsPage.bindMcpEvents(container);
   },
 
   // 活动监测 / AI / 数据管理 相关事件绑定
@@ -1377,5 +1427,117 @@ export const settingsPage = {
     };
     initIcons();
     bindDeletes();
+  },
+
+  // MCP 服务器管理事件绑定
+  bindMcpEvents(container: Element): void {
+    // 传输类型切换显示对应字段
+    const transportSelect = container.querySelector('.mcp-transport-select') as HTMLSelectElement;
+    if (transportSelect) {
+      transportSelect.addEventListener('change', () => {
+        const urlInput = container.querySelector('.mcp-url-input') as HTMLElement;
+        const cmdInput = container.querySelector('.mcp-cmd-input') as HTMLElement;
+        if (transportSelect.value === 'stdio') {
+          urlInput.style.display = 'none';
+          cmdInput.style.display = '';
+        } else {
+          urlInput.style.display = '';
+          cmdInput.style.display = 'none';
+        }
+      });
+    }
+
+    // 添加服务器
+    document.getElementById('mcpAddBtn')?.addEventListener('click', async () => {
+      const name = (container.querySelector('.mcp-name-input') as HTMLInputElement)?.value.trim();
+      const transport = (container.querySelector('.mcp-transport-select') as HTMLSelectElement)?.value;
+      const url = (container.querySelector('.mcp-url-input') as HTMLInputElement)?.value.trim();
+      const command = (container.querySelector('.mcp-cmd-input') as HTMLInputElement)?.value.trim();
+      if (!name) { toast.warning('请输入服务器名称'); return; }
+      if (transport === 'http' && !url) { toast.warning('请输入 URL'); return; }
+      if (transport === 'stdio' && !command) { toast.warning('请输入命令'); return; }
+      const config: McpServerConfig = {
+        id: 'mcp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        name,
+        transport,
+        command: transport === 'stdio' ? command : null,
+        args: null,
+        url: transport === 'http' ? url : null,
+        enabled: true,
+      };
+      try {
+        await mcpApi.addServer(config);
+        toast.success('MCP 服务器已添加');
+        settingsPage.init();
+      } catch (err) {
+        toast.error('添加失败：' + (err instanceof Error ? err.message : String(err)));
+      }
+    });
+
+    // 连接服务器
+    container.querySelectorAll('.mcp-connect').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.mcpId!;
+        try {
+          await mcpApi.connectServer(id);
+          toast.success('已连接');
+          settingsPage.init();
+        } catch (err) {
+          toast.error('连接失败：' + (err instanceof Error ? err.message : String(err)));
+        }
+      });
+    });
+
+    // 断开服务器
+    container.querySelectorAll('.mcp-disconnect').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.mcpId!;
+        try {
+          await mcpApi.disconnectServer(id);
+          toast.success('已断开');
+          settingsPage.init();
+        } catch (err) {
+          toast.error('断开失败：' + (err instanceof Error ? err.message : String(err)));
+        }
+      });
+    });
+
+    // 删除服务器
+    container.querySelectorAll('.mcp-remove').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.mcpId!;
+        const ok = await modal.confirm({ title: '确认删除', message: '确定要删除此 MCP 服务器吗？' });
+        if (!ok) return;
+        await mcpApi.removeServer(id);
+        toast.info('已删除');
+        settingsPage.init();
+      });
+    });
+
+    // 查看工具列表
+    container.querySelectorAll('.mcp-show-tools').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.mcpId!;
+        const panel = document.getElementById('mcpToolsPanel');
+        if (!panel) return;
+        try {
+          const tools = await mcpApi.getTools(id);
+          if (tools.length === 0) {
+            panel.innerHTML = '<div style="font-size:var(--text-xs);color:var(--text-lighter);padding:var(--space-2)">该服务器没有可用工具</div>';
+          } else {
+            panel.innerHTML = '<div style="font-size:var(--text-xs);font-weight:600;margin-bottom:var(--space-1)">可用工具：</div>' +
+              tools.map(t => `
+                <div style="font-size:var(--text-xs);padding:var(--space-1) 0;border-bottom:1px solid var(--border)">
+                  <div style="font-weight:500">${utils.escapeHtml(t.name)}</div>
+                  <div style="color:var(--text-lighter)">${utils.escapeHtml(t.description || '无描述')}</div>
+                </div>
+              `).join('');
+          }
+          panel.style.display = 'block';
+        } catch (err) {
+          toast.error('获取工具列表失败：' + (err instanceof Error ? err.message : String(err)));
+        }
+      });
+    });
   },
 };
