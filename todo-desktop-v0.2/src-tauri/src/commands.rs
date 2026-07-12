@@ -5,6 +5,7 @@ use crate::learning;
 use crate::models::*;
 use crate::reminder::ReminderEngine;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{Emitter, State};
 
@@ -1056,6 +1057,80 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
                 AiToolResult { success: false, message: "未找到该记忆".into(), data: None }
             }
         }
+        "workflow_create" => {
+            let notes = tool_call.args.get("notes").and_then(|v| v.as_array());
+            if notes.is_none() || notes.unwrap().is_empty() {
+                return AiToolResult { success: false, message: "缺少 notes 参数".into(), data: None };
+            }
+            let notes = notes.unwrap();
+            let empty_connections = vec![];
+            let connections = tool_call.args.get("connections").and_then(|v| v.as_array()).unwrap_or(&empty_connections);
+
+            // 1. 创建所有便签
+            let mut created: Vec<String> = Vec::new();
+            let mut title_to_id: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            let mut x_offset = 0;
+
+            for note_val in notes {
+                let title = note_val.get("title").and_then(|v| v.as_str()).unwrap_or("便签").to_string();
+                let note = note_val.get("note").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let board_tab = note_val.get("board_tab").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let group_id = note_val.get("group_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                let task = db.add_task(TaskItem {
+                    id: String::new(),
+                    r#type: "note".into(),
+                    sub_type: "note".into(),
+                    title: title.clone(),
+                    content: String::new(),
+                    category_id: "cat_default".into(),
+                    priority: 0,
+                    parent_id: None,
+                    sort_order: 0,
+                    status: "active".into(),
+                    grid_x: Some(x_offset), grid_y: Some(0),
+                    home_x: None, home_y: None,
+                    todo_date: None, todo_status: None,
+                    recurrence: None, completed_at: None,
+                    deadline: None, pin_date: None,
+                    collapsed: false,
+                    note,
+                    time_start: None, time_end: None,
+                    note_width: None, note_height: None,
+                    open_width: None, open_height: None,
+                    group_id,
+                    board_tab,
+                    node_mode: None,
+                    schedule_start: None, schedule_end: None,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                });
+                title_to_id.insert(title.clone(), task.id.clone());
+                created.push(task.id.clone());
+                x_offset += 2;
+            }
+
+            // 2. 创建连接线
+            let mut conn_count = 0;
+            for conn_val in connections {
+                let from = conn_val.get("from_title").and_then(|v| v.as_str()).unwrap_or("");
+                let to = conn_val.get("to_title").and_then(|v| v.as_str()).unwrap_or("");
+                if let (Some(fid), Some(tid)) = (title_to_id.get(from), title_to_id.get(to)) {
+                    db.add_connection(fid, tid.to_string());
+                    conn_count += 1;
+                }
+            }
+
+            let data = serde_json::json!({
+                "created_note_ids": created,
+                "created_connections": conn_count,
+            });
+            AiToolResult {
+                success: true,
+                message: format!("已创建 {} 张便签和 {} 条连接线", created.len(), conn_count),
+                data: Some(data),
+            }
+        }
         "connection_delete" => {
             let from_id = tool_call.args.get("from_id").and_then(|v| v.as_str()).unwrap_or("");
             let to_id = tool_call.args.get("to_id").and_then(|v| v.as_str()).unwrap_or("");
@@ -1067,6 +1142,187 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
             } else {
                 AiToolResult { success: false, message: "未找到该连接线".into(), data: None }
             }
+        }
+        "daily_plan" => {
+            let date = tool_call.args.get("date").and_then(|v| v.as_str()).unwrap_or("");
+            let plan_date = if date.is_empty() {
+                chrono::Local::now().format("%Y-%m-%d").to_string()
+            } else { date.to_string() };
+
+            let today = chrono::Local::now().naive_local().date();
+            let yesterday = (today - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
+
+            let profile = db.get_user_profile();
+
+            let today_tasks = db.get_tasks(TaskFilters {
+                status: None, r#type: None, category_id: None, parent_id: None,
+                todo_date: Some(plan_date.clone()), pin_date: None,
+            });
+            let active_today: Vec<&TaskItem> = today_tasks.iter()
+                .filter(|t| t.todo_status.as_deref() != Some("completed") && t.status != "done").collect();
+            let done_today: Vec<&TaskItem> = today_tasks.iter()
+                .filter(|t| t.todo_status.as_deref() == Some("completed") || t.status == "done").collect();
+
+            let yesterday_tasks = db.get_tasks(TaskFilters {
+                status: None, r#type: None, category_id: None, parent_id: None,
+                todo_date: Some(yesterday), pin_date: None,
+            });
+            let overflow: Vec<&TaskItem> = yesterday_tasks.iter()
+                .filter(|t| t.todo_status.as_deref() != Some("completed") && t.status != "done").collect();
+
+            let unassigned = db.get_tasks(TaskFilters {
+                status: Some("active".into()), r#type: None, category_id: None, parent_id: None,
+                todo_date: None, pin_date: None,
+            });
+            let unassigned_todos: Vec<&TaskItem> = unassigned.iter()
+                .filter(|t| t.grid_x.is_none() && t.grid_y.is_none()).collect();
+
+            let all_tasks = db.get_tasks(TaskFilters {
+                status: None, r#type: None, category_id: None, parent_id: None,
+                todo_date: None, pin_date: None,
+            });
+            let three_days = today + chrono::Duration::days(3);
+            let upcoming_deadlines: Vec<&TaskItem> = all_tasks.iter()
+                .filter(|t| {
+                    if t.status == "done" { return false; }
+                    if let Some(ref dl) = t.deadline {
+                        chrono::NaiveDate::parse_from_str(dl, "%Y-%m-%d")
+                            .map(|d| d >= today && d <= three_days).unwrap_or(false)
+                    } else { false }
+                }).collect();
+
+            // Get weekly goals & progress
+            let goals = db.get_goals();
+            let weekday = today.format("%u").to_string().parse::<i64>().unwrap_or(1);
+            let week_start = today - chrono::Duration::days(weekday - 1);
+            let mut weekly_focus = 0i32;
+            for i in 0..7 {
+                let d = (week_start + chrono::Duration::days(i)).format("%Y-%m-%d").to_string();
+                weekly_focus += db.get_time_records(&d).iter().map(|r| r.total_minutes).sum::<i32>();
+            }
+
+            let data = serde_json::json!({
+                "date": plan_date,
+                "weekday": today.format("%A").to_string(),
+                "done_today": done_today.len(),
+                "tasks": active_today.iter().map(|t| serde_json::json!({
+                    "id": t.id, "title": t.title, "priority": t.priority,
+                    "deadline": t.deadline, "category_id": t.category_id, "note": t.note,
+                })).collect::<Vec<_>>(),
+                "overflow": overflow.iter().map(|t| serde_json::json!({
+                    "id": t.id, "title": t.title, "priority": t.priority,
+                })).collect::<Vec<_>>(),
+                "unassigned": unassigned_todos.iter().map(|t| serde_json::json!({
+                    "id": t.id, "title": t.title, "priority": t.priority,
+                })).collect::<Vec<_>>(),
+                "upcoming_deadlines": upcoming_deadlines.iter().map(|t| serde_json::json!({
+                    "id": t.id, "title": t.title, "deadline": t.deadline,
+                })).collect::<Vec<_>>(),
+                "weekly_focus_minutes": weekly_focus,
+                "goals": goals.iter().map(|g| serde_json::json!({
+                    "goal_type": g.goal_type, "target_minutes": g.target_minutes,
+                })).collect::<Vec<_>>(),
+                "preferred_hours": profile.preferred_work_hours,
+                "common_categories": profile.common_categories,
+            });
+            AiToolResult { success: true, message: format!("已生成 {} 的日程数据", plan_date), data: Some(data) }
+        }
+        "weekly_review" => {
+            let now = chrono::Local::now().naive_local().date();
+            let mut daily_data = Vec::new();
+            let mut total_focus = 0i32;
+            let mut total_tasks = 0i32;
+            let mut total_done = 0i32;
+
+            for i in 0..7 {
+                let date = (now - chrono::Duration::days(i)).format("%Y-%m-%d").to_string();
+                let focus: i32 = db.get_time_records(&date).iter().map(|r| r.total_minutes).sum();
+                let (tt, td) = compute_todo_stats(db, &date);
+                total_focus += focus; total_tasks += tt; total_done += td;
+                daily_data.push(serde_json::json!({
+                    "date": date, "focus_minutes": focus,
+                    "tasks_total": tt, "tasks_done": td,
+                    "completion_rate": if tt > 0 { (td as f64 / tt as f64 * 100.0).round() } else { 0.0 },
+                }));
+            }
+
+            let mut prev_total_focus = 0i32;
+            for i in 7..14 {
+                let date = (now - chrono::Duration::days(i)).format("%Y-%m-%d").to_string();
+                prev_total_focus += db.get_time_records(&date).iter().map(|r| r.total_minutes).sum::<i32>();
+            }
+
+            let mut cat_stats: HashMap<String, i32> = HashMap::new();
+            for i in 0..7 {
+                let date = (now - chrono::Duration::days(i)).format("%Y-%m-%d").to_string();
+                for r in &db.get_time_records(&date) {
+                    *cat_stats.entry(r.time_type.clone()).or_insert(0) += r.total_minutes;
+                }
+            }
+            let mut cat_vec: Vec<(String, i32)> = cat_stats.into_iter().collect();
+            cat_vec.sort_by(|a, b| b.1.cmp(&a.1));
+
+            let streak = db.get_streak();
+            let profile = db.get_user_profile();
+
+            let data = serde_json::json!({
+                "period": format!("{} ~ {}", (now - chrono::Duration::days(6)).format("%m-%d"), now.format("%m-%d")),
+                "daily": daily_data,
+                "total_focus_minutes": total_focus,
+                "daily_avg_focus": (total_focus as f64 / 7.0 * 10.0).round() / 10.0,
+                "total_tasks": total_tasks, "total_completed": total_done,
+                "overall_completion_rate": if total_tasks > 0 { (total_done as f64 / total_tasks as f64 * 100.0).round() } else { 0.0 },
+                "category_breakdown": cat_vec.iter().map(|(c, m)| serde_json::json!({"category": c, "minutes": m})).collect::<Vec<_>>(),
+                "prev_week_focus": prev_total_focus,
+                "focus_trend": if prev_total_focus > 0 { ((total_focus as f64 - prev_total_focus as f64) / prev_total_focus as f64 * 100.0).round() } else { 0.0 },
+                "streak": streak,
+                "insights_count": profile.insights.len(),
+            });
+            AiToolResult { success: true, message: "已生成周度回顾数据".into(), data: Some(data) }
+        }
+        "smart_suggest" => {
+            let now = chrono::Local::now();
+            let today = now.format("%Y-%m-%d").to_string();
+            let hour = now.format("%H").to_string().parse::<i32>().unwrap_or(12);
+            let profile = db.get_user_profile();
+
+            let (tt, td) = compute_todo_stats(db, &today);
+            let active = db.get_tasks(TaskFilters {
+                status: Some("active".into()), r#type: None, category_id: None, parent_id: None,
+                todo_date: Some(today.clone()), pin_date: None,
+            });
+            let high_pri = active.iter().filter(|t| t.priority > 0).count();
+            let with_deadline = active.iter().filter(|t| t.deadline.is_some()).count();
+            let streak = db.get_streak();
+
+            let time_label = if hour < 6 { "凌晨" } else if hour < 9 { "早晨" } else if hour < 12 { "上午" }
+                else if hour < 14 { "午间" } else if hour < 18 { "下午" } else { "晚间" };
+
+            let goals = db.get_goals();
+            let weekday_i = now.format("%u").to_string().parse::<i64>().unwrap_or(1);
+            let week_start = now.naive_local().date() - chrono::Duration::days(weekday_i - 1);
+            let mut week_focus = 0i32;
+            for i in 0..7 {
+                let d = (week_start + chrono::Duration::days(i)).format("%Y-%m-%d").to_string();
+                week_focus += db.get_time_records(&d).iter().map(|r| r.total_minutes).sum::<i32>();
+            }
+
+            let data = serde_json::json!({
+                "time_label": time_label, "hour": hour,
+                "weekday": now.format("%A").to_string(),
+                "today_tasks_total": tt, "today_tasks_done": td,
+                "today_remaining": active.len(),
+                "high_priority_remaining": high_pri,
+                "deadline_count": with_deadline,
+                "streak": streak,
+                "weekly_focus_minutes": week_focus,
+                "goals": goals.iter().map(|g| serde_json::json!({
+                    "goal_type": g.goal_type, "target_minutes": g.target_minutes,
+                })).collect::<Vec<_>>(),
+                "preferred_hours": profile.preferred_work_hours,
+            });
+            let summary = format!("当前{time_label}，今日待办{tt}项已完成{td}项，剩余{}项（{}项高优先级）。", active.len(), high_pri);
+            AiToolResult { success: true, message: summary, data: Some(data) }
         }
         _ => AiToolResult { success: false, message: format!("未知工具: {}", tool_call.tool), data: None },
     }
@@ -1123,10 +1379,12 @@ pub async fn ai_chat(
         ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile).await?
     };
 
+    let clean_reply = ai_service::strip_tool_calls(&final_reply);
+
     // 保存到对话记录
     let mut db_messages: Vec<ConversationMessage> = request.history.clone();
     db_messages.push(ConversationMessage { role: "user".into(), content: request.message.clone() });
-    db_messages.push(ConversationMessage { role: "assistant".into(), content: final_reply.clone() });
+    db_messages.push(ConversationMessage { role: "assistant".into(), content: clean_reply.clone() });
     let conv = Conversation {
         id: request.session_id.clone(),
         title: String::new(),
@@ -1141,7 +1399,7 @@ pub async fn ai_chat(
         let settings_clone = settings.clone();
         let history_clone = request.history.clone();
         let user_msg = request.message.clone();
-        let reply_clone = final_reply.clone();
+        let reply_clone = clean_reply.clone();
         let db_clone = db.inner().clone();
         tokio::spawn(async move {
             match learning::extract_from_conversation(&settings_clone, &history_clone, &user_msg, &reply_clone).await {
@@ -1157,7 +1415,7 @@ pub async fn ai_chat(
         });
     }
 
-    Ok(AiChatResponse { session_id: request.session_id, reply: final_reply })
+    Ok(AiChatResponse { session_id: request.session_id, reply: clean_reply })
 }
 
 #[tauri::command]
@@ -1215,10 +1473,13 @@ pub async fn ai_chat_stream(
         ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile).await?
     };
 
+    // 保证存储和显示的回复不含工具调用标记
+    let clean_reply = ai_service::strip_tool_calls(&final_reply);
+
     // 保存到对话记录
     let mut db_messages: Vec<ConversationMessage> = request.history.clone();
     db_messages.push(ConversationMessage { role: "user".into(), content: request.message.clone() });
-    db_messages.push(ConversationMessage { role: "assistant".into(), content: final_reply.clone() });
+    db_messages.push(ConversationMessage { role: "assistant".into(), content: clean_reply.clone() });
     let conv = Conversation {
         id: request.session_id.clone(),
         title: String::new(),
@@ -1233,7 +1494,7 @@ pub async fn ai_chat_stream(
         let settings_clone = settings.clone();
         let history_clone = request.history.clone();
         let user_msg = request.message.clone();
-        let reply_clone = final_reply.clone();
+        let reply_clone = clean_reply.clone();
         let db_clone = db.inner().clone();
         tokio::spawn(async move {
             match learning::extract_from_conversation(&settings_clone, &history_clone, &user_msg, &reply_clone).await {
@@ -1250,7 +1511,7 @@ pub async fn ai_chat_stream(
     }
 
     let _ = app.emit("ai-chat-done", serde_json::json!({
-        "content": final_reply,
+        "content": clean_reply,
         "session_id": request.session_id,
     }));
 

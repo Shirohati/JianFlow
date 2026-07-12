@@ -489,6 +489,36 @@ impl Default for ReminderConfig {
     }
 }
 
+// ===== 工作流规划 =====
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WorkflowNote {
+    pub title: String,
+    pub note: Option<String>,
+    pub board_tab: Option<String>,
+    pub grid_x: Option<i32>,
+    pub grid_y: Option<i32>,
+    pub group_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WorkflowConnection {
+    pub from_title: String,
+    pub to_title: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WorkflowPlan {
+    pub notes: Vec<WorkflowNote>,
+    pub connections: Vec<WorkflowConnection>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct WorkflowResult {
+    pub created_notes: Vec<String>,
+    pub created_connections: usize,
+}
+
 // ===== v0.2 AI 人设 =====
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
