@@ -5,6 +5,7 @@ mod database;
 mod learning;
 mod models;
 mod reminder;
+mod skills;
 
 use activity::{ActivityMonitor, ActivityStore};
 use database::Database;
@@ -237,6 +238,12 @@ pub fn run() {
             commands::user_analyze,
             commands::user_get_insights,
             commands::user_delete_insight,
+            // v0.2 Skill 系统
+            commands::skill_run,
+            commands::skill_get_init_form,
+            commands::board_read,
+            commands::report_list,
+            commands::user_update_profile_json,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {

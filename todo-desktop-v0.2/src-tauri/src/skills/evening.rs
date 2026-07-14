@@ -1,68 +1,45 @@
-use crate::models::SkillResponse;
-use serde_json::Value;
+use crate::models::SkillDataContext;
 
-pub fn evening_skill_prompt() -> String {
-    r#"【晚间总结 Skill】
+pub fn build_prompt(ctx: &SkillDataContext) -> String {
+    format!(r#"【晚间总结 Skill — 单次完成】
 
-今日的完整数据（待办、活动监测、番茄钟、专注记录）已通过"当前页面数据"提供。
+你是笺流管家，现在是晚上。当前日期：{current_date}。
 
-你的任务分两步：
+== 你的任务 ==
+分析用户今日的全部数据，生成一份结构化的晚间报告，并通过 `report_save` 工具直接保存到数据库。不要出"问题表单"让用户填写——基于现有数据直接生成报告。用户可以在报告中看到今日效率评估和明日建议。
 
-=== 第一步：分析数据 → 生成针对性表单 ===
+== 数据上下文（JSON）==
+{ctx_json}
 
-仔细分析数据，找出值得追问的点：
+== 工作流程 ==
+1. 分析 today_tasks：完成率、未完成任务、有 schedule_start 但未完成的任务
+2. 分析 activity_summary：各分类时长分布、总活跃时长、Top 应用
+3. 分析 pomodoro_records：专注总时长、按 time_type 分组
+4. 分析 user_profile_json：用户的目标、每日目标时长（daily_hours）是否达成
+5. 分析 recent_reports：对比前几日的趋势
+6. 分析 goals：每日/每周目标达成情况
 
-1. 待办完成率：完成/未完成比例。如果偏低，用户遇到了什么困难？
-2. 活动监测：各分类时长分布（学习/编程/娱乐/浏览等）有无不合理之处？
-3. 异常片段：例如安排了学习任务但有长时间娱乐活动、某时段无活动记录
-4. 番茄钟/专注记录：专注总时长是否达标、中断次数
-5. 生产力评分：如果偏低，可能的原因
+== 工具调用要求 ==
+- 使用 `report_save` 工具保存报告，参数：
+  - date: "{current_date}"
+  - user_summary: <markdown 格式的报告正文，给用户看>
+  - ai_data: <JSON 字符串，包含结构化数据：focus_minutes / todo_completion_rate / activity_breakdown / productivity_score 等，给 AI 后续读取>
+  - report_type: "daily"
 
-基于分析结果，生成一个【FORM】收集用户反馈。
-表单字段必须根据当日实际数据动态生成，禁止套用固定模板。
+== 报告内容要求 ==
+报告（user_summary）应包含：
+1. **今日概览**：专注时长、待办完成率、总体评价（一句话）
+2. **时间分配分析**：各分类时长占比，是否有失衡
+3. **效率评估**：结合番茄钟和活动监测，评估专注水平
+4. **问题诊断**：如有未完成任务、长时间娱乐活动、专注不连续等，指出具体问题
+5. **明日建议**：1-3 条具体可执行的建议（基于今日数据，不要泛泛而谈）
 
-【FORM】中必须包含三个核心字段（可在此基础上增减）：
-  - study_hours (type: number, label: "今天实际学习了几个小时？")
-  - completion (type: select, label: "今日完成情况如何？")
-  - mood (type: select, label: "今天整体状态如何？")
+报告要像日记一样，将用户的今日状态写清楚，方便复盘。有数据支撑，不能笼统。
 
-此外，根据数据特点添加针对性字段。例如：
-  - 某时段活动监测为娱乐但安排了学习 → 问当时发生了什么
-  - 完成率偏低 → 问卡在哪里
-  - 番茄钟中断多 → 问干扰因素
-  - 活动监测有大段空白 → 问在做什么
-  - 有长时间的非学习活动 → 问原因
-
-【FORM】标记必须是一行纯 JSON，不要有多余空格和换行。
-
-=== 第二步：用户提交【FORM_DATA】后 ===
-
-结合用户填写的表单数据和已有的监测数据，生成一份结构化的晚间报告。
-报告应包括：
-  - 今日概览（专注时长、完成率、总体评价）
-  - 像日记一样，将用户的今日状态等等写清楚，方便用户复盘
-  - 时间分配分析（各分类用时，是否有失衡）
-  - 针对用户填写的困难/干扰给出具体建议
-  - 明日的小建议（1-3条，具体可执行）
-
-报告要有数据支撑，不能笼统。
-"#.to_string()
-}
-
-pub fn process_evening_form(_data: &Value) -> Result<SkillResponse, String> {
-    Ok(SkillResponse {
-        message: "已收到，正在生成报告…".to_string(),
-        form_schema: None,
-        done: false,
-    })
-}
-
-pub fn save_evening_report(date: &str, user_summary: &str, ai_data: Option<String>) -> crate::models::DailyReport {
-    crate::models::DailyReport {
-        date: date.to_string(),
-        user_summary: user_summary.to_string(),
-        ai_data,
-        report_type: "daily".to_string(),
-        created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-    }
+== 输出格式 ==
+1. 先调用 `report_save` 工具保存报告
+2. 然后向用户展示报告正文（markdown）作为最终回复"#,
+        current_date = ctx.current_date,
+        ctx_json = serde_json::to_string_pretty(ctx).unwrap_or_default()
+    )
 }

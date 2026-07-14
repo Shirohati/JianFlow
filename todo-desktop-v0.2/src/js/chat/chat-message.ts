@@ -1,9 +1,10 @@
-import { parseFormSchema, renderForm } from './chat-form';
-
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   reasoning?: string;
+  _displayContent?: string;
+  _tokenTimer?: ReturnType<typeof setTimeout>;
+  _reasoningTimer?: ReturnType<typeof setTimeout>;
 }
 
 export function renderMessages(messages: ChatMessage[]): string {
@@ -12,42 +13,26 @@ export function renderMessages(messages: ChatMessage[]): string {
 
 function renderSingleMessage(msg: ChatMessage, idx: number): string {
   const roleClass = `chat-msg--${msg.role}`;
-  const hasForm = msg.content.includes('【FORM】') && !msg.content.includes('【FORM_DATA】');
-  const hasFormData = msg.content.includes('【FORM_DATA】');
+  const displayContent = (msg._displayContent ?? msg.content);
 
   let html = `<div class="chat-msg ${roleClass}" data-msg-index="${idx}">`;
 
   if (msg.role === 'assistant' && msg.reasoning) {
-    const showThinking = (window as any).__showThinking === true;
     html += `
-      <details class="chat-thinking"${showThinking ? ' open' : ''}>
-        <summary>思考链</summary>
+      <details class="chat-thinking">
+        <summary class="chat-thinking-summary">思考链</summary>
         <div class="chat-thinking-content">${escapeHtml(msg.reasoning || '')}</div>
       </details>`;
   }
 
-  if (hasForm) {
-    const textParts = msg.content.split(/【FORM】[\s\S]*?【\/FORM】/);
-    html += textParts.map(p => p.trim()).filter(Boolean).map(p => `<div class="chat-msg-content">${renderMarkdown(p)}</div>`).join('');
-    const schema = parseFormSchema(msg.content);
-    if (schema) {
-      html += renderForm(schema);
-    } else {
-      html += `<div class="cf-form-placeholder" data-form-idx="${idx}"></div>`;
-    }
-  } else if (hasFormData) {
-    const textParts = msg.content.replace(/【FORM_DATA】[\s\S]*?【\/FORM_DATA】/g, '');
-    html += `<div class="chat-msg-content">${renderMarkdown(textParts || '(表单已提交)')}</div>`;
-    html += `<div class="cf-form-submitted">已提交</div>`;
-  } else {
-    html += `<div class="chat-msg-content">${renderMarkdown(msg.content)}</div>`;
-  }
+  html += `<div class="chat-msg-content">${renderMarkdown(displayContent)}</div>`;
 
   html += '</div>';
   return html;
 }
 
-export function updateMessageElement(messages: ChatMessage[], idx: number, showThinking: boolean): void {
+// 使用轻量级更新：只更新消息气泡中的内容文本，不重建整个 DOM
+export function updateMessageElement(messages: ChatMessage[], idx: number): void {
   const el = document.getElementById('chatMessages');
   if (!el) return;
   const msg = messages[idx];
@@ -57,30 +42,43 @@ export function updateMessageElement(messages: ChatMessage[], idx: number, showT
   if (idx < 0 || idx >= msgEls.length) return;
 
   const target = msgEls[idx] as HTMLElement;
-  const hasForm = msg.content.includes('【FORM】') && !msg.content.includes('【FORM_DATA】');
 
-  let html = '';
+  // 更新思考链
   if (msg.reasoning) {
-    html += `
-      <details class="chat-thinking"${showThinking ? ' open' : ''}>
-        <summary>思考链</summary>
-        <div class="chat-thinking-content">${escapeHtml(msg.reasoning || '')}</div>
-      </details>`;
-  }
-
-  if (hasForm) {
-    const textParts = msg.content.split(/【FORM】[\s\S]*?【\/FORM】/);
-    html += textParts.map(p => p.trim()).filter(Boolean).map(p => `<div class="chat-msg-content">${renderMarkdown(p)}</div>`).join('');
-    const schema = parseFormSchema(msg.content);
-    if (schema) {
-      html += renderForm(schema);
+    let details = target.querySelector('.chat-thinking') as HTMLDetailsElement;
+    if (!details) {
+      details = document.createElement('details');
+      details.className = 'chat-thinking';
+      const summary = document.createElement('summary');
+      summary.className = 'chat-thinking-summary';
+      summary.textContent = '思考链';
+      details.appendChild(summary);
+      const content = document.createElement('div');
+      content.className = 'chat-thinking-content';
+      details.appendChild(content);
+      target.insertBefore(details, target.firstChild);
     }
-  } else {
-    html += `<div class="chat-msg-content">${renderMarkdown(msg.content)}</div>`;
+    const contentDiv = details.querySelector('.chat-thinking-content');
+    if (contentDiv) contentDiv.textContent = msg.reasoning;
   }
 
-  target.innerHTML = html;
-  el.scrollTop = el.scrollHeight;
+  // 更新消息内容：只替换 chat-msg-content 的 innerHTML
+  let contentEl = target.querySelector('.chat-msg-content');
+
+  if (contentEl) {
+    contentEl.innerHTML = renderMarkdown(msg.content);
+  } else {
+    // 还没有内容元素，首次渲染
+    const div = document.createElement('div');
+    div.className = 'chat-msg-content';
+    div.innerHTML = renderMarkdown(msg.content);
+    target.appendChild(div);
+  }
+
+  // 只在用户靠近底部时自动滚动，避免强制布局
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < 150) {
+    el.scrollTop = el.scrollHeight;
+  }
 }
 
 function escapeHtml(str: string): string {
@@ -98,5 +96,7 @@ function renderMarkdown(text: string): string {
   html = html.replace(/- (.+)/g, '<li>$1</li>');
   html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
   html = html.replace(/\n/g, '<br>');
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
   return html;
 }

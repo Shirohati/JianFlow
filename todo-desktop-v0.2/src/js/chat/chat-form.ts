@@ -1,25 +1,4 @@
-interface FormField {
-  key: string;
-  label: string;
-  type: 'text' | 'textarea' | 'number' | 'select' | 'tags' | 'date';
-  required?: boolean;
-  options?: string[];
-}
-
-interface FormSchema {
-  title?: string;
-  fields: FormField[];
-}
-
-export function parseFormSchema(content: string): FormSchema | null {
-  const match = content.match(/【FORM】([\s\S]*?)【\/FORM】/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[1].trim());
-  } catch {
-    return null;
-  }
-}
+import type { FormSchema, FormField } from '../api';
 
 export function collectFormData(container: HTMLElement): Record<string, any> {
   const data: Record<string, any> = {};
@@ -65,8 +44,6 @@ function renderField(f: FormField): string {
       return `<div class="cf-field">${label}<select class="cf-select" data-form-key="${f.key}"${required}>${opts}</select></div>`;
     case 'tags':
       return `<div class="cf-field">${label}<div class="cf-tags-container" data-form-key="${f.key}"><input type="text" class="cf-tags-input" placeholder="输入后回车添加"><div class="cf-tags"></div></div></div>`;
-    case 'date':
-      return `<div class="cf-field">${label}<input type="date" class="cf-input" data-form-key="${f.key}"${required}></div>`;
     default:
       return '';
   }

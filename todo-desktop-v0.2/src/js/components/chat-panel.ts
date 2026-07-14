@@ -1,10 +1,11 @@
-import { taskApi, activityApi, goalApi, conversationApi, streamChat, personaApi, userApi, timeRecordApi } from '../api';
+import { conversationApi, streamChat, personaApi, userApi, skillApi, type SkillParams } from '../api';
 import { store } from '../store';
+import { router } from '../router';
 import { initIcons, getIconHTML } from '../icons';
-import { invoke } from '@tauri-apps/api/core';
 import type { AiChatRequest, Conversation, AiPersona, UserProfile } from '../api';
 import { ChatMessage, renderMessages, updateMessageElement } from '../chat/chat-message';
-import { setSkillStatus, setOnTrigger, renderToolbar, bindSkillButtons, updateToolbarState, SkillName } from '../chat/chat-skill';
+import { setSkillStatus, setOnTrigger, renderToolbar, bindSkillButtons, updateToolbarState, SkillName, triggerSkill } from '../chat/chat-skill';
+import { renderForm, initTagsInput } from '../chat/chat-form';
 
 let messages: ChatMessage[] = [];
 let sessionId = 'session_' + Date.now();
@@ -12,7 +13,6 @@ let conversations: Conversation[] = [];
 let streamingCleanup: (() => void) | null = null;
 let currentPersona: AiPersona | null = null;
 let userProfile: UserProfile | null = null;
-let currentSkill: SkillName | null = null;
 
 async function loadConversations(): Promise<void> {
   try { conversations = await conversationApi.list(); } catch { conversations = []; }
@@ -126,7 +126,6 @@ function newConversation(): void {
   if (chatPanel.streaming) return;
   sessionId = 'session_' + Date.now();
   messages = [];
-  currentSkill = null;
   if (streamingCleanup) { streamingCleanup(); streamingCleanup = null; }
   renderMsgView();
   renderConversationList();
@@ -193,46 +192,75 @@ function escapeHtml(str: string): string {
 }
 
 async function handleFormSubmit(data: Record<string, any>): Promise<void> {
-  if (currentSkill) {
-    const skillName = currentSkill;
-    currentSkill = null;
-
-    if (skillName === 'init') {
-      try {
-        const result: any = await invoke('skill_submit', { name: 'init', formData: data });
-        messages.push({ role: 'user', content: '【FORM_DATA】' + JSON.stringify(data) + '【/FORM_DATA】' });
-        messages.push({ role: 'assistant', content: result.message || '已收到。' });
-        renderMsgView();
-        if (result.done) {
-          setSkillStatus('init', 'done');
-          updateToolbarState();
-          setTimeout(() => { loadUserProfile(); checkInitStatus(); }, 1000);
-        } else if (result.form_schema) {
-          messages.push({ role: 'assistant', content: '【FORM】' + JSON.stringify(result.form_schema) + '【/FORM】' });
-          currentSkill = 'init';
-          renderMsgView();
-        }
-      } catch (err: any) {
-        messages.push({ role: 'user', content: '【FORM_DATA】' + JSON.stringify(data) + '【/FORM_DATA】' });
-        messages.push({ role: 'assistant', content: '处理出错：' + (err?.message || String(err)) });
-        renderMsgView();
-      }
-    } else {
-      setSkillStatus(skillName as SkillName, 'running');
-      updateToolbarState();
-      await doSend('【FORM_DATA】' + JSON.stringify(data) + '【/FORM_DATA】');
-    }
-  } else {
-    const formDataStr = '【FORM_DATA】' + JSON.stringify(data) + '【/FORM_DATA】';
-    await doSend(formDataStr);
+  try {
+    const outcome = await triggerSkill('init', { form_data: data });
+    messages.push({ role: 'user', content: '【已提交初始化问卷】' });
+    messages.push({ role: 'assistant', content: outcome.reply });
+    renderMsgView();
+    setSkillStatus('init', 'done');
+    updateToolbarState();
+    setTimeout(() => { loadUserProfile(); checkInitStatus(); }, 1000);
+  } catch (err: any) {
+    messages.push({ role: 'assistant', content: '保存失败：' + (err?.message || String(err)) });
+    renderMsgView();
   }
 }
 
 async function handleSkillTrigger(name: SkillName): Promise<void> {
+  // init 特殊处理：渲染表单等待用户填写
+  if (name === 'init') {
+    try {
+      const schema = await skillApi.getInitForm();
+      messages.push({ role: 'user', content: '点击「初始化」' });
+      messages.push({ role: 'assistant', content: '欢迎使用笺流！请填写以下问卷让我了解您：' });
+      renderMsgView();
+      // 在最后一条 assistant 消息后追加表单 DOM
+      const lastMsg = document.querySelector('#chatMessages .chat-msg:last-child') as HTMLElement;
+      if (lastMsg) {
+        const formWrapper = document.createElement('div');
+        formWrapper.innerHTML = renderForm(schema);
+        lastMsg.appendChild(formWrapper);
+        initTagsInput(formWrapper);
+      }
+      setSkillStatus('init', 'running');
+      updateToolbarState();
+    } catch (err: any) {
+      messages.push({ role: 'assistant', content: '加载表单失败：' + (err?.message || String(err)) });
+      renderMsgView();
+    }
+    return;
+  }
+
+  // morning/evening/report 走 triggerSkill 单次完成
   setSkillStatus(name, 'running');
   updateToolbarState();
-  currentSkill = name;
-  await doSend('/skill ' + name);
+  const labelMap = { morning: '晨间规划', evening: '晚间总结', report: '周报月报' } as const;
+  messages.push({ role: 'user', content: `执行：${labelMap[name]}` });
+  renderMsgView();
+
+  try {
+    let params: SkillParams = {};
+    if (name === 'report') {
+      const dateRange = window.prompt('请输入时间范围（如：这周、上周、上个月、最近7天）');
+      if (!dateRange) {
+        setSkillStatus(name, 'ready');
+        updateToolbarState();
+        return;
+      }
+      params = { date_range_text: dateRange };
+    }
+
+    const outcome = await triggerSkill(name, params);
+    messages.push({ role: 'assistant', content: outcome.reply });
+    renderMsgView();
+    setSkillStatus(name, 'done');
+    updateToolbarState();
+  } catch (err: any) {
+    messages.push({ role: 'assistant', content: '执行失败：' + (err?.message || String(err)) });
+    renderMsgView();
+    setSkillStatus(name, 'ready');
+    updateToolbarState();
+  }
 }
 
 async function doSend(text: string): Promise<void> {
@@ -246,9 +274,8 @@ async function doSend(text: string): Promise<void> {
   chatPanel.disableInput();
 
   const currentPage = store.get<string>('currentPage') || 'home';
-  const pageData = await chatPanel.gatherPageData();
   const convHistory = messages.slice(0, -1).map(m => ({ role: m.role, content: m.content }));
-  const request: AiChatRequest = { session_id: sessionId, message: text, page: currentPage, page_data: pageData, history: convHistory };
+  const request: AiChatRequest = { session_id: sessionId, message: text, page: currentPage, history: convHistory };
 
   const showThinking = (store.get<any>('activitySettings') as any)?.show_thinking === true;
   (window as any).__showThinking = showThinking;
@@ -257,15 +284,37 @@ async function doSend(text: string): Promise<void> {
     streamingCleanup = await streamChat(request, {
       onToken: (token) => {
         const msg = messages[msgIdx];
-        if (msg) msg.content += token;
-        updateMessageElement(messages, msgIdx, showThinking);
+        if (!msg) return;
+        msg.content += token;
+        // 节流：最多每 40ms 更新一次 DOM
+        if (!msg._tokenTimer) {
+          msg._tokenTimer = setTimeout(() => {
+            msg._tokenTimer = undefined;
+            const displayContent = msg.content;
+            if (displayContent !== msg._displayContent) {
+              msg._displayContent = displayContent;
+              updateMessageElement(messages, msgIdx);
+            }
+          }, 40);
+        }
       },
       onReasoning: (reasoning) => {
         const msg = messages[msgIdx];
-        if (msg) msg.reasoning = (msg.reasoning || '') + reasoning;
-        updateMessageElement(messages, msgIdx, showThinking);
+        if (!msg) return;
+        msg.reasoning = (msg.reasoning || '') + reasoning;
+        if (!msg._reasoningTimer) {
+          msg._reasoningTimer = setTimeout(() => {
+            msg._reasoningTimer = undefined;
+            updateMessageElement(messages, msgIdx);
+          }, 100);
+        }
       },
       onDone: (result) => {
+        const doneMsg = messages[msgIdx];
+        if (doneMsg) {
+          if (doneMsg._tokenTimer) { clearTimeout(doneMsg._tokenTimer); doneMsg._tokenTimer = undefined; }
+          if (doneMsg._reasoningTimer) { clearTimeout(doneMsg._reasoningTimer); doneMsg._reasoningTimer = undefined; }
+        }
         messages[msgIdx].content = result.content;
         chatPanel.streaming = false;
         chatPanel.enableInput();
@@ -274,9 +323,9 @@ async function doSend(text: string): Promise<void> {
         setTimeout(() => {
           loadUserProfile();
           checkInitStatus();
-          if (currentSkill) {
-            setSkillStatus(currentSkill, 'running');
-            updateToolbarState();
+          const currentPage = store.get<string>('currentPage');
+          if (currentPage) {
+            router.navigate(currentPage);
           }
         }, 2000);
       },
@@ -455,150 +504,6 @@ export const chatPanel = {
     if (panel) panel.style.display = 'none';
     if (toggle) toggle.style.display = 'flex';
     this.isOpen = false;
-  },
-
-  async gatherPageData(): Promise<string> {
-    const parts: string[] = [];
-    const page = (store.get<string>('currentPage') || 'home') as string;
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-
-    try {
-      const todayTasks = await taskApi.list({ todo_date: today });
-      const done = todayTasks.filter((t: any) => t.todo_status === 'completed' || t.status === 'done');
-      const active = todayTasks.filter((t: any) => !(t.todo_status === 'completed' || t.status === 'done'));
-      if (todayTasks.length > 0) {
-        parts.push(`=== 今日待办 (${today}) ===`);
-        parts.push(`未完成 ${active.length} 项，已完成 ${done.length} 项`);
-        if (active.length > 0) {
-          parts.push('未完成列表：');
-          active.forEach((t: any) => parts.push(`  - ${t.title} (ID:${t.id.slice(0,8)}...)${t.deadline ? ` 截止:${t.deadline}` : ''}`));
-        }
-        if (done.length > 0) {
-          parts.push('已完成列表：');
-          done.forEach((t: any) => parts.push(`  - ${t.title}`));
-        }
-      } else {
-        parts.push(`今日 (${today}) 无待办任务`);
-      }
-    } catch { parts.push('今日待办数据：获取失败'); }
-
-    try {
-      const yesterdayTasks = await taskApi.list({ todo_date: yesterday });
-      if (yesterdayTasks.length > 0) {
-        const d = yesterdayTasks.filter((t: any) => t.todo_status === 'completed' || t.status === 'done');
-        const u = yesterdayTasks.filter((t: any) => !(t.todo_status === 'completed' || t.status === 'done'));
-        parts.push(`=== 昨日待办 (${yesterday}) ===`);
-        parts.push(`未完成 ${u.length} 项，已完成 ${d.length} 项`);
-        if (u.length > 0) {
-          parts.push('未完成列表：');
-          u.forEach((t: any) => parts.push(`  - ${t.title} (ID:${t.id.slice(0,8)}...)`));
-        }
-        if (d.length > 0) {
-          parts.push('已完成列表：');
-          d.forEach((t: any) => parts.push(`  - ${t.title}`));
-        }
-      }
-    } catch { /* 忽略 */ }
-
-    try {
-      const state = await activityApi.getState();
-      if (state) parts.push(`活动监测：${state.paused ? '已暂停' : '运行中'}`);
-    } catch { /* ignore */ }
-
-    try {
-      const score = await activityApi.getProductivityScore(today);
-      if (score) parts.push(`今日生产力评分：${score.score}分 (${score.level})`);
-    } catch { /* ignore */ }
-
-    try {
-      const summary = await activityApi.getSummary(today);
-      if (summary && summary.total_active_seconds > 0) {
-        parts.push(`=== 今日活动监测 ===`);
-        parts.push(`总活跃时长：${Math.round(summary.total_active_seconds / 60)} 分钟`);
-        const cats = Object.entries(summary.category_breakdown).sort((a, b) => b[1] - a[1]);
-        for (const [cat, sec] of cats) {
-          parts.push(`${cat}: ${Math.round(sec / 60)} 分钟`);
-        }
-        const apps = summary.top_apps.slice(0, 8);
-        if (apps.length > 0) {
-          parts.push('Top 应用/窗口：');
-          apps.forEach(a => parts.push(`  ${a.name} (${a.category}): ${Math.round(a.seconds / 60)} 分钟`));
-        }
-      }
-    } catch { /* ignore */ }
-
-    try {
-      const sessions = await activityApi.getSessions(today);
-      const notable = sessions
-        .filter(s => s.duration_seconds >= 180)
-        .sort((a, b) => b.duration_seconds - a.duration_seconds)
-        .slice(0, 15);
-      if (notable.length > 0) {
-        parts.push(`较长片段（按时长倒序）：`);
-        notable.forEach(s => {
-          const start = s.start_time.slice(11, 16);
-          const end = s.end_time.slice(11, 16);
-          const label = s.web_title || s.window_title || s.process_name || '未知';
-          parts.push(`  ${start}-${end} [${s.category}] ${label}（${Math.round(s.duration_seconds / 60)} 分钟）`);
-        });
-      }
-    } catch { /* ignore */ }
-
-    try {
-      const records = await timeRecordApi.list(today);
-      if (records.length > 0) {
-        let totalPomo = 0;
-        parts.push(`=== 今日专注/番茄钟记录 ===`);
-        records.forEach(r => {
-          totalPomo += r.total_minutes;
-          parts.push(`  ${r.time_type}: ${r.total_minutes} 分钟${r.note ? ` — ${r.note}` : ''}`);
-        });
-        parts.push(`专注总时长：${totalPomo} 分钟`);
-      }
-    } catch { /* ignore */ }
-
-    try {
-      const todayTasks = await taskApi.list({ todo_date: today });
-      const scheduled = todayTasks.filter((t: any) => t.schedule_start);
-      if (scheduled.length > 0) {
-        scheduled.sort((a: any, b: any) => (a.schedule_start || '').localeCompare(b.schedule_start || ''));
-        parts.push(`=== 今日时间轴（带时段的任务） ===`);
-        scheduled.forEach((t: any) => {
-          const status = (t.todo_status === 'completed' || t.status === 'done') ? '✅' : '⬜';
-          parts.push(`  ${status} ${t.schedule_start.slice(0,5)}${t.schedule_end ? '-' + t.schedule_end.slice(0,5) : ''} ${t.title}`);
-        });
-      }
-    } catch { /* ignore */ }
-
-    try {
-      const all = await taskApi.list({});
-      const boardNotes = all.filter((t: any) => t.grid_x !== null && t.grid_y !== null && t.sub_type !== 'task');
-      if (boardNotes.length > 0) {
-        const types = [...new Set(boardNotes.map((t: any) => t.type))];
-        const tabs = [...new Set(boardNotes.map((t: any) => t.board_tab).filter(Boolean))];
-        parts.push(`=== 目标板内容 (${boardNotes.length} 项, 类型: ${types.join('/')}) ===`);
-        if (page === 'board') {
-          boardNotes.forEach((t: any) => {
-            const content = t.note || t.content || '';
-            parts.push(`  - [${t.type}] ${t.title}${content ? `: ${content.slice(0, 80)}` : ''} (ID:${t.id.slice(0,8)}...)${t.board_tab ? ` tab:${t.board_tab}` : ''}`);
-          });
-        } else {
-          // 非 board 页只展示概览：每类/每标签页几项
-          if (tabs.length > 0) parts.push(`  标签页：${tabs.join('、')}`);
-          const byType: Record<string, number> = {};
-          boardNotes.forEach((t: any) => { byType[t.type] = (byType[t.type] || 0) + 1; });
-          parts.push(`  分布：${Object.entries(byType).map(([k, v]) => `${k} ${v}项`).join('、')}`);
-          parts.push(`  （如需查看详情，可用 board_read 工具）`);
-        }
-      }
-    } catch { /* ignore */ }
-    try {
-      const goals = await goalApi.list();
-      if (goals.length > 0) parts.push(`学习目标：${goals.map((g: any) => `${g.goal_type} ${g.target_minutes}分钟/天`).join('，')}`);
-    } catch { /* ignore */ }
-
-    return parts.join('\n');
   },
 
   send(): void {

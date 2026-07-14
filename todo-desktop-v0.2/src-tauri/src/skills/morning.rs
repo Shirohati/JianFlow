@@ -1,68 +1,39 @@
-use crate::models::SkillResponse;
-use serde_json::Value;
+use crate::models::SkillDataContext;
 
-pub fn morning_skill_prompt() -> String {
-    r#"【晨间规划 Skill】
+pub fn build_prompt(ctx: &SkillDataContext) -> String {
+    format!(r#"【晨间规划 Skill — 单次完成】
 
-今日/昨日待办、用户画像（身份/目标/进度）、目标板路线图、活动习惯数据已通过"当前页面数据"提供。
+你是笺流管家，现在是早晨。当前日期：{current_date}。
 
-你的任务：在单次回复中完成全部规划，不要分多轮对话。
+== 你的任务 ==
+一次性为用户规划今日时间表，并通过 `schedule_create` 工具直接创建带时段的任务到时间轴。不要出"确认表单"等用户回复后再创建——直接调用工具，让任务出现在用户的时间轴上。用户之后可以自行调整（拖拽、删除）。
 
-=== 第一步：分析数据 ===
+== 数据上下文（JSON）==
+{ctx_json}
 
-1. 查看今日已有待办，是否有昨日未完成需优先处理的
-2. 查看今日时间轴（有 schedule_start 的任务），了解今日已有安排
-3. 参考用户画像中的身份、目标、偏好时段
-4. 参考目标板路线图（如二轮复习计划）
+== 工作流程 ==
+1. 分析今日已有待办（today_tasks）：是否有昨日未完成项需要优先处理
+2. 参考 yesterday_tasks 中 status != "done" 的项，判断是否要顺延到今日
+3. 参考 user_profile_json 中的身份、目标、进度、每日可投入时长（daily_hours）、弱项
+4. 参考 board_notes 中的学习路线图，理解长期规划
+5. 参考 goals 中的每日/每周目标分钟数
+6. 根据以上信息，安排今日的时段任务（如 09:00-10:30 学数学《880》高数，10:30-12:00 英语阅读）
 
-=== 第二步：生成完整规划（文字方案） ===
+== 工具调用要求 ==
+- 使用 `schedule_create` 工具批量创建任务，参数：tasks 数组，每个任务含 title / category_id / todo_date / schedule_start / schedule_end / priority 字段
+- todo_date 使用今天的日期：{current_date}
+- 对于学习/工作类任务，category_id 用 cat_study/cat_work 等
+- 对于休息/用餐等纯时间块，type 设为 "note"
+- 时间段从早上（如 09:00 或更早，参考 daily_hours）到晚上，留出休息时间
+- 不要遗漏重要的目标分类（参考 user_profile_json.subjects）
 
-输出完整的今日执行计划，包含优先任务、时间段建议、重点内容建议。
+== 输出格式 ==
+1. 先用一段简短文字（2-3 句话）总结今日规划重点
+2. 然后调用 `schedule_create` 工具创建任务
+3. 工具执行后，再写一段简短的"今日小建议"（1-2 条，具体可执行）
 
-=== 第三步：附加确认表单 ===
-
-在方案下方附加【FORM】确认表单：
-【FORM】{"title":"确认今日计划","fields":[{"key":"action","label":"是否执行以上计划？","type":"select","options":["确认执行","需要调整"]}]}【/FORM】
-
-如果用户选择"需要调整"，继续对话修改。
-如果用户选择"确认执行"，使用 task_create 或 task_batch_create 创建真实时间轴数据。
-
-=== 重要：时间轴字段说明 ===
-
-时间轴是笺流首页右侧的纵向日程栏（06:00-22:00 纵向刻度，每格=36px）。
-要让任务出现在时间轴上，创建任务时必须设置以下字段：
-
-  - schedule_start（必填）：开始时间，格式 "HH:MM"，如 "09:00"
-  - schedule_end（可选）：结束时间，格式 "HH:MM"，如 "10:30"
-  - todo_date：今天的日期 "YYYY-MM-DD"
-  - category_id：分类ID，决定时间块的颜色
-  - title：任务标题
-
-不设置 schedule_start 的任务不会出现在时间轴上。
-
-对于学习/工作类任务，用常规 task_create：
-  【TOOL】{"tool":"task_create","args":{"title":"数学《880》高数","category_id":"cat_study","todo_date":"2026-07-12","schedule_start":"09:00","schedule_end":"10:30"}}【/TOOL】
-
-对于休息/用餐等纯时间块，也用 task_create，type 设为 "note"：
-  【TOOL】{"tool":"task_create","args":{"title":"午休","type":"note","category_id":"cat_default","todo_date":"2026-07-12","schedule_start":"12:00","schedule_end":"13:00"}}【/TOOL】
-
-用户可以在一句话中同时插入多个工具调用，依次执行。
-"#.to_string()
-}
-
-pub fn process_morning_form(data: &Value) -> Result<SkillResponse, String> {
-    let confirmed = data.get("action").and_then(|v| v.as_str()).unwrap_or("");
-    if confirmed == "确认执行" {
-        Ok(SkillResponse {
-            message: "计划已确认，正在创建待办…".to_string(),
-            form_schema: None,
-            done: true,
-        })
-    } else {
-        Ok(SkillResponse {
-            message: "好的，请告诉我需要调整哪些部分？".to_string(),
-            form_schema: None,
-            done: false,
-        })
-    }
+不要输出"是否确认"等表单——直接调工具。"#,
+        current_date = ctx.current_date,
+        ctx_json = serde_json::to_string_pretty(ctx).unwrap_or_default()
+    )
 }

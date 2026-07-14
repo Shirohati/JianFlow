@@ -306,6 +306,117 @@ async fn call_ai_api(settings: &ActivitySettings, messages: &[ConversationMessag
         .ok_or_else(|| "响应中缺少 choices[0].message.content".to_string())
 }
 
+/// 生成 OpenAI function calling 格式的工具定义
+pub fn build_tool_schemas() -> Vec<serde_json::Value> {
+    fn t(name: &str, desc: &str, props: &[(&str, &str, &str, bool)]) -> serde_json::Value {
+        let mut properties = serde_json::Map::new();
+        let mut required = Vec::new();
+        for (pname, ptype, pdesc, is_req) in props {
+            properties.insert(pname.to_string(), serde_json::json!({"type": ptype, "description": pdesc}));
+            if *is_req { required.push(pname.to_string()); }
+        }
+        serde_json::json!({"type": "function", "function": {"name": name, "description": desc, "parameters": {"type": "object", "properties": properties, "required": required}}})
+    }
+    vec![
+        t("task_list", "按条件列出待办，返回 id/title/status/todo_date/deadline/schedule_start/schedule_end", &[("todo_date","string","日期 YYYY-MM-DD",false),("status","string","active 或 done",false),("category_id","string","分类ID",false),("keyword","string","标题关键词",false)]),
+        t("task_get", "查看待办完整详情", &[("id","string","待办ID",true)]),
+        t("task_create", "创建新待办，设置 schedule_start/schedule_end 可出现在日程时间轴", &[("title","string","待办标题",true),("todo_date","string","日期 YYYY-MM-DD",false),("category_id","string","分类ID，默认 cat_default",false),("priority","integer","优先级 0-5",false),("deadline","string","截止日期 YYYY-MM-DD",false),("schedule_start","string","开始时间 HH:MM",false),("schedule_end","string","结束时间 HH:MM",false),("note","string","备注 markdown",false),("type","string","todo 或 note",false)]),
+        t("task_update", "修改待办字段", &[("id","string","待办ID",true),("title","string","新标题",false),("status","string","active 或 done",false),("priority","integer","优先级",false),("deadline","string","截止日期",false),("note","string","备注",false),("category_id","string","分类ID",false),("todo_date","string","日期 YYYY-MM-DD",false),("schedule_start","string","开始时间 HH:MM",false),("schedule_end","string","结束时间 HH:MM",false)]),
+        t("task_complete", "将待办标记为已完成", &[("id","string","待办ID",true)]),
+        t("task_delete", "删除待办", &[("id","string","待办ID",true)]),
+        t("note_create", "创建目标板便签", &[("title","string","便签标题",true),("note","string","便签正文",false),("board_tab","string","标签页名",false),("grid_x","integer","画布 X 坐标",false),("grid_y","integer","画布 Y 坐标",false)]),
+        t("note_update", "修改便签", &[("id","string","便签ID",true),("title","string","新标题",false),("note","string","新正文",false),("board_tab","string","新标签页",false),("grid_x","integer","X 坐标",false),("grid_y","integer","Y 坐标",false)]),
+        t("note_delete", "删除便签", &[("id","string","便签ID",true)]),
+        t("connection_create", "创建便签间的连接线", &[("from_id","string","起点便签ID",true),("to_id","string","终点便签ID",true)]),
+        t("connection_delete", "删除连接线", &[("from_id","string","起点便签ID",true),("to_id","string","终点便签ID",true)]),
+        t("board_read", "读取目标板所有便签和连线", &[]),
+        t("goal_set", "设置每日/每周专注目标", &[("goal_type","string","daily 或 weekly",true),("target_minutes","integer","目标分钟数",true)]),
+        t("memory_search", "搜索已保存的用户记忆", &[("keyword","string","搜索关键词",true)]),
+        t("memory_save", "保存用户要求记住的信息", &[("key","string","标签",true),("content","string","内容",true)]),
+        t("memory_list", "列出所有保存的记忆", &[]),
+        t("memory_delete", "删除指定记忆", &[("id","string","记忆ID",true)]),
+        t("report_list", "按日期范围读取历史报告", &[("start_date","string","开始日期 YYYY-MM-DD",true),("end_date","string","结束日期 YYYY-MM-DD",true)]),
+        t("profile_update", "更新用户画像字段", &[("key","string","字段名",true),("value","string","字段值",true)]),
+        t("settings_update", "更新应用设置（仅安全字段）", &[("key","string","设置项: ai_system_prompt/ai_model/show_thinking/ai_strict_mode",true),("value","string","新值",true)]),
+        t("persona_switch", "切换 AI 人设", &[("persona_id","string","人设ID: persona_default/persona_ling",true)]),
+        t("user_analyze", "分析用户行为数据并更新画像", &[]),
+        t("report_save", "保存报告到数据库", &[("date","string","日期 YYYY-MM-DD",true),("user_summary","string","面向用户的摘要",true),("report_type","string","daily/weekly/monthly",true)]),
+        t("task_batch_create", "批量创建多个待办", &[("tasks","array","待办数组，每个包含 title/todo_date/schedule_start/schedule_end",true)]),
+    ]
+}
+
+/// 用 function calling 检测工具调用（非流式），返回 (文本回复, 工具调用列表)
+/// 如果 API/模型不支持 function calling，工具列表为空，回退到文本解析
+pub async fn detect_tool_calls(
+    settings: &ActivitySettings,
+    messages: &[ConversationMessage],
+    tools: &[serde_json::Value],
+) -> Result<(String, Vec<super::models::AiToolCall>), String> {
+    if settings.ai_api_key.is_empty() {
+        return Err("未配置 API Key".to_string());
+    }
+    let base_url = if settings.ai_api_base_url.is_empty() {
+        "https://api.openai.com/v1".to_string()
+    } else {
+        settings.ai_api_base_url.trim_end_matches('/').to_string()
+    };
+    let url = format!("{}/chat/completions", base_url);
+    let model = if settings.ai_model.is_empty() { "gpt-4o-mini".to_string() } else { settings.ai_model.clone() };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let req_messages: Vec<serde_json::Value> = messages.iter().map(|m| {
+        serde_json::json!({"role": m.role, "content": m.content})
+    }).collect();
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": req_messages,
+        "temperature": 0.7,
+        "max_tokens": 2048,
+        "tools": tools,
+        "tool_choice": "auto",
+    });
+
+    let resp = client.post(&url)
+        .header("Authorization", format!("Bearer {}", settings.ai_api_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("请求 AI API 失败: {}", e))?;
+
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| format!("读取响应失败: {}", e))?;
+    if !status.is_success() {
+        return Err(format!("AI API 返回错误 {}: {}", status, text));
+    }
+
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| format!("解析响应 JSON 失败: {}", e))?;
+    let message = v.get("choices").and_then(|c| c.get(0)).and_then(|c| c.get("message"));
+
+    // 提取文本回复
+    let content = message.and_then(|m| m.get("content").and_then(|c| c.as_str())).unwrap_or("").to_string();
+
+    // 提取 tool_calls
+    let mut tool_calls = Vec::new();
+    if let Some(tcs) = message.and_then(|m| m.get("tool_calls")).and_then(|t| t.as_array()) {
+        for tc in tcs {
+            let tool = tc.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).unwrap_or("");
+            let args_str = tc.get("function").and_then(|f| f.get("arguments")).and_then(|a| a.as_str()).unwrap_or("{}");
+            let args: serde_json::Value = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
+            if !tool.is_empty() {
+                tool_calls.push(super::models::AiToolCall { tool: tool.to_string(), args });
+            }
+        }
+    }
+
+    Ok((content, tool_calls))
+}
+
 /// 公开的简单 AI API 调用（供 learning.rs 使用）
 pub async fn call_ai_api_simple(settings: &ActivitySettings, messages: &[ConversationMessage]) -> Result<String, String> {
     call_ai_api(settings, messages).await
@@ -445,15 +556,10 @@ pub async fn chat_with_tools_profile(
 }
 
 /// 根据 skill 名称获取对应的 system prompt
-pub fn get_skill_prompt(skill_name: &str) -> Option<String> {
-    match skill_name {
-        "init" => Some(crate::skills::init::init_skill_prompt()),
-        "evening" => Some(crate::skills::evening::evening_skill_prompt()),
-        "morning" => Some(crate::skills::morning::morning_skill_prompt()),
-        "report" => Some(crate::skills::report::report_skill_prompt()),
-        "board" => Some(crate::skills::board::board_enhancement_prompt()),
-        _ => None,
-    }
+/// 注：旧版 skill prompt 函数已删除（改为 build_prompt(ctx) 单次调用流程）。
+/// 此函数保留为 stub 返回 None，待 Task 5 orchestrator 重写时统一清理。
+pub fn get_skill_prompt(_skill_name: &str) -> Option<String> {
+    None
 }
 
 /// 检测消息中是否包含 skill 触发命令
@@ -520,19 +626,6 @@ pub fn build_messages(
         // 同样注入 skill prompt 让 AI 知道如何继续处理
         if let Some(skill_prompt) = get_skill_prompt(&skill_name) {
             messages.push(ConversationMessage { role: "system".into(), content: skill_prompt });
-        }
-    }
-
-    if enable_tools {
-        messages.push(ConversationMessage { role: "system".into(), content: tool_system_prompt() });
-    }
-
-    if let Some(data) = page_data {
-        if !data.is_empty() {
-            messages.push(ConversationMessage {
-                role: "system".into(),
-                content: format!("当前页面数据：\n{}", data),
-            });
         }
     }
 
@@ -660,190 +753,6 @@ pub async fn test_connection(settings: &ActivitySettings) -> Result<String, Stri
     call_ai_api(settings, &messages).await
 }
 
-/// 工具调用系统提示
-pub fn tool_system_prompt() -> String {
-    r#"你有能力执行以下操作。当用户要求执行操作时，请在你的回复中插入工具调用。
-工具调用格式（JSON 放在一对特殊标记中）：
-
-【TOOL】{"tool": "<工具名>", "args": {}}【/TOOL】
-
-重要：你可以在一句话中同时插入多个工具调用，会依次执行。
-
-数据语义说明：
-- todo_date：待办分配在哪一天（YYYY-MM-DD），表示这条待办属于该日
-- deadline：截止日期（YYYY-MM-DD），过期会有通知提醒
-- status：全局生命周期状态 'active'(进行中) / 'done'(已完成)。AI 的 task_complete 工具会设置此字段
-- todo_status：每日完成状态 'pending'(待办) / 'completed'(当日已完成)。前端 UI 的勾选操作设置此字段
-- 注意：已完成的任务可能 status='done' 或 todo_status='completed'，也可能两者都设了。判断待办是否已完成，应检查 todo_status='completed' 或 status='done'
-- category_id：分类ID，常见值: cat_default(其他) cat_study(学习) cat_work(工作) cat_reading(阅读) cat_exercise(运动)
-- priority：优先级（数值越大越优先，0=未设置）
-- note：便签正文或待办备注（支持 markdown 格式）
-- grid_x/grid_y：看板便签在画布上的坐标位置（有坐标=便签，无坐标=每日待办）
-- sub_type='task'：看板上的子任务（挂靠在父便签下）
-- board_tab：看板标签页名
-- group_id：看板分组ID，用于将多个便签分在一组
-- recurrence：重复规则 'daily'/'weekly'/'monthly'，会定期生成新待办
-- schedule_start / schedule_end：任务在时间轴上的起止时间（格式 HH:MM）。设置了这两个字段的任务会出现在首页右侧的纵向日程时间轴上。晨间规划时每个任务都应该设置 schedule_start/schedule_end。
-
-支持的工具有：
-
-=== 待办操作（grid_x/grid_y 为空的条目）===
-
-1. task_list — 按条件列出待办
-    参数: status (可选: "active","done"), todo_date (可选, 如 "2026-07-11"),
-          category_id (可选), keyword (可选, 标题关键词)
-    示例: 【TOOL】{"tool":"task_list","args":{"todo_date":"2026-07-11"}}【/TOOL】
-    说明: 不传任何参数则列出所有待办。返回每个任务的 id/title/status/todo_date/deadline/schedule_start/schedule_end。
-
-2. task_get — 查看待办详情
-    参数: id (必填)
-    示例: 【TOOL】{"tool":"task_get","args":{"id":"xxx"}}【/TOOL】
-    说明: 返回完整待办信息，包括 title/status/category_id/priority/todo_date/deadline/note/content/schedule_start/schedule_end。
-
-3. task_create — 创建待办
-    参数: title (必填), category_id (可选, 默认 cat_default), priority (可选, 默认0),
-          deadline (可选, 格式 YYYY-MM-DD), note (可选, markdown备注),
-          todo_date (可选, 格式 YYYY-MM-DD, 默认今天),
-          schedule_start (可选, 格式 HH:MM, 如 "09:00"), 
-          schedule_end (可选, 格式 HH:MM, 如 "10:30"),
-          type (可选, 默认 "todo", 纯时间块用 "note")
-    示例: 【TOOL】{"tool":"task_create","args":{"title":"读《原子习惯》第3章","category_id":"cat_reading","priority":2,"todo_date":"2026-07-11","schedule_start":"09:00","schedule_end":"10:00"}}【/TOOL】
-    说明: schedule_start/schedule_end 设置后，任务会出现在首页右侧的时间轴（日程）上。
-
-4. task_update — 修改待办
-    参数: id (必填), 可改 title/status/priority/deadline/note/category_id/todo_date/schedule_start/schedule_end
-    示例: 【TOOL】{"tool":"task_update","args":{"id":"xxx","title":"新标题"}}【/TOOL】
-    说明: 修改 schedule_start/schedule_end 可以调整任务在时间轴上的位置。
-
-5. task_complete — 完成待办
-    参数: id (必填)
-    说明: 将待办标记为已完成，同时设置 status='done'、todo_status='completed'、completed_at。
-    示例: 【TOOL】{"tool":"task_complete","args":{"id":"xxx"}}【/TOOL】
-
-6. task_delete — 删除待办
-    参数: id (必填)
-    示例: 【TOOL】{"tool":"task_delete","args":{"id":"xxx"}}【/TOOL】
-
-=== 目标设置 ===
-
-7. goal_set — 设置学习目标
-    参数: goal_type ("daily" 或 "weekly"), target_minutes (数字, 每日/每周目标分钟数)
-    说明: daily 目标示例：每天学120分钟。weekly 目标示例：每周学600分钟。
-    示例: 【TOOL】{"tool":"goal_set","args":{"goal_type":"daily","target_minutes":180}}【/TOOL】
-
-=== 目标板便签操作（grid_x/grid_y 不为空的条目）===
-
-8. note_create — 创建便签
-    参数: title (必填, 便签标题), note (可选, 便签正文), board_tab (可选, 所属标签页),
-          grid_x/grid_y (可选, 画布位置坐标, 网格单位)
-    说明: 便签放在看板画布上，每个便签有位置和可选正文。
-    示例: 【TOOL】{"tool":"note_create","args":{"title":"Q3学习计划","note":"重点：算法和英语","board_tab":"学习"}}【/TOOL】
-
-9. note_update — 修改便签
-    参数: id (必填), 可改 title/note/board_tab/grid_x/grid_y/note_width/note_height
-    示例: 【TOOL】{"tool":"note_update","args":{"id":"xxx","note":"新内容"}}【/TOOL】
-
-10. note_delete — 删除便签
-    参数: id (必填)
-    示例: 【TOOL】{"tool":"note_delete","args":{"id":"xxx"}}【/TOOL】
-
-11. connection_create — 创建便签间的连接线
-    参数: from_id (必填, 起点便签ID), to_id (必填, 终点便签ID)
-    说明: 连接线表示两个便签之间的关联关系（有向），类似思维导图。
-    示例: 【TOOL】{"tool":"connection_create","args":{"from_id":"id1","to_id":"id2"}}【/TOOL】
-
-12. connection_delete — 删除连接线
-    参数: from_id (必填), to_id (必填)
-    示例: 【TOOL】{"tool":"connection_delete","args":{"from_id":"id1","to_id":"id2"}}【/TOOL】
-
-13. board_read — 读取目标板数据
-    参数: 无
-    说明: 读取画布上所有便签和连接线，了解用户的整体学习路线图/计划框架。
-          返回便签（带 grid_x/grid_y 的条目）和连线列表。
-    示例: 【TOOL】{"tool":"board_read","args":{}}【/TOOL】
-
-=== 长期记忆 ===
-
-14. memory_search — 搜索关于用户的信息
-    参数: keyword (必填), 搜索关键词
-    说明: 当用户问「你还记得我之前说的吗」或需要回忆以前聊过的内容时，用此工具查找。
-    示例: 【TOOL】{"tool":"memory_search","args":{"keyword":"学习计划"}}【/TOOL】
-
-15. memory_save — 记住用户告诉你的重要信息（只在用户明确要求时使用）
-    参数: key (必填, 简短标签), content (必填, 内容)
-    说明: 只有用户说「记住这个」或明确要求你记住时才用。不要自作主张。
-    示例: 【TOOL】{"tool":"memory_save","args":{"key":"学习目标","content":"用户目标是每天学习4小时"}}【/TOOL】
-
-16. memory_list — 列出所有的记忆
-    参数: 无
-    示例: 【TOOL】{"tool":"memory_list","args":{}}【/TOOL】
-
-17. memory_delete — 删除记忆
-    参数: id (必填)
-    示例: 【TOOL】{"tool":"memory_delete","args":{"id":"xxx"}}【/TOOL】
-
-=== 报告查询 ===
-
-18. report_list — 按日期范围读取报告
-    参数: start_date (必填, 格式 YYYY-MM-DD), end_date (必填, 格式 YYYY-MM-DD)
-    说明: 读取指定日期范围内的所有报告（晚间总结/周报/月报），用于生成新报告时的参考。
-    示例: 【TOOL】{"tool":"report_list","args":{"start_date":"2026-06-01","end_date":"2026-07-11"}}【/TOOL】
-
-=== 用户画像更新 ===
-
-19. profile_update — 更新用户画像的关键信息
-    参数: key (必填, 要更新的字段), value (必填, 新值)
-    说明: 当用户告知你以下变化时，主动用此工具更新：
-          - 换了教辅/习题册 → key="materials", value="《880》《660》"
-          - 进度变了 → key="progress", value="冲刺阶段"
-          - 目标变了 → key="target", value="考南大计算机"
-          - 身份变了 → key="identity", value="考研二战"
-          - 每天可投入时间变了 → key="daily_hours", value="8"
-          - 弱项变了 → key="weakness", value="线代, 英语阅读"
-          - 其他 → 选择最接近的 key
-    示例: 【TOOL】{"tool":"profile_update","args":{"key":"materials","value":"《880》《660》"}}【/TOOL】
-
-使用建议：
-- 用户问「今天有哪些待办」→ 用 task_list({todo_date: "今天日期"}) 列出所有今天的待办
-- 用户问「昨天的完成情况」→ 用 task_list({todo_date: "昨天日期", status: "done"})
-- 用户问「我有哪些学习任务」→ 用 task_list({category_id: "cat_study"})
-- 用户要求操作某个待办 → 先用 task_list 或 task_get 找到 id，再执行操作
-- 用户问「今天有什么截止」→ 用 task_list 获取今天待办，检查 deadline 字段
-- 用户问「我的番茄钟目标」→ 用 goal_set 查看或修改每日/每周目标
-- 用户问「你能记住吗」→ 如果涉及保存信息用 memory_save，查找已存信息用 memory_search
-- 用户告知换了教辅或进度变化 → 用 profile_update 更新画像
-- 晨间规划时，参考用户画像中的身份、科目、教辅资料来安排具体内容
-- 需要了解用户的学习路线图/计划框架 → 用 board_read 读取目标板
-- 生成周报月报时，先用 report_list 读取历史报告
-
-执行完工具后会告知你结果，请根据结果向用户做最终回复。
-如果用户没有要求操作，正常对话即可，不要插入工具调用。"#.to_string()
-}
-
-/// 从 AI 回复中解析出工具调用
-pub fn parse_tool_calls(reply: &str) -> Vec<AiToolCall> {
-    use crate::models::AiToolCall;
-    let mut calls = Vec::new();
-    let mut pos = 0;
-    let start_tag = "【TOOL】";
-    let end_tag = "【/TOOL】";
-    while let Some(start) = reply[pos..].find(start_tag) {
-        let abs_start = pos + start + start_tag.len();
-        if let Some(end) = reply[abs_start..].find(end_tag) {
-            let json_str = &reply[abs_start..abs_start + end];
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
-                let tool = v.get("tool").and_then(|t| t.as_str()).unwrap_or("").to_string();
-                let args = v.get("args").cloned().unwrap_or(serde_json::Value::Null);
-                calls.push(AiToolCall { tool, args });
-            }
-            pos = abs_start + end + end_tag.len();
-        } else {
-            break;
-        }
-    }
-    calls
-}
-
 /// 流式 AI 对话，通过回调逐段发送 token 和 reasoning
 pub async fn call_ai_api_stream<F1, F2>(
     settings: &ActivitySettings,
@@ -904,8 +813,10 @@ where
 
     let mut full_content = String::new();
     let mut stream = resp.bytes_stream();
+    let mut done = false;
 
     while let Some(chunk_result) = stream.next().await {
+        if done { break; }
         let chunk = chunk_result.map_err(|e| format!("读取流失败: {}", e))?;
         let text = String::from_utf8_lossy(&chunk);
 
@@ -916,6 +827,7 @@ where
             }
             let data = &line[6..];
             if data == "[DONE]" {
+                done = true;
                 break;
             }
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
@@ -968,4 +880,22 @@ pub fn template_summary(summary: &ActivitySummary, pomo_minutes: i32, todo_total
     }
     lines.push("> 配置 AI API 可获得更智能的分析报告。".to_string());
     lines.join("\n")
+}
+
+/// 公开的 function calling 调用入口（供 Skill orchestrator 使用）
+/// 返回 (文本回复, 工具调用列表)
+pub async fn call_with_tools(
+    settings: &ActivitySettings,
+    messages: &[ConversationMessage],
+    tools: &[serde_json::Value],
+) -> Result<(String, Vec<crate::models::AiToolCall>), String> {
+    detect_tool_calls(settings, messages, tools).await
+}
+
+/// 不带工具的最终回复调用（供 Skill orchestrator 在工具执行后做总结用）
+pub async fn call_followup(
+    settings: &ActivitySettings,
+    messages: &[ConversationMessage],
+) -> Result<String, String> {
+    call_ai_api(settings, messages).await
 }

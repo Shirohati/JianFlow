@@ -458,3 +458,47 @@ export async function streamChat(request: AiChatRequest, callbacks: StreamCallba
 
   return () => unlisteners.forEach(fn => fn());
 }
+
+// ===== Skill 系统 =====
+
+export interface AiToolResult {
+  tool: string;
+  success: boolean;
+  message: string;
+  data?: unknown;
+}
+
+export interface SkillOutcome {
+  reply: string;
+  tool_results: AiToolResult[];
+  saved_reports: string[];
+  created_tasks: string[];
+  needs_followup: boolean;
+}
+
+export interface SkillParams {
+  date_range_text?: string;
+  form_data?: unknown;
+  extra?: unknown;
+}
+
+export interface FormSchema {
+  title?: string;
+  fields: FormField[];
+}
+
+export interface FormField {
+  key: string;
+  label: string;
+  type: 'text' | 'textarea' | 'select' | 'tags' | 'number';
+  placeholder?: string;
+  options?: string[];
+  required?: boolean;
+}
+
+export const skillApi = {
+  run: (name: string, params: SkillParams) =>
+    invoke<SkillOutcome>('skill_run', { name, params }),
+  getInitForm: () =>
+    invoke<FormSchema>('skill_get_init_form'),
+};

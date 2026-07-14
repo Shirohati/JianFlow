@@ -532,13 +532,6 @@ pub struct UserProfile {
 
 // ===== Skill 系统 =====
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SkillResponse {
-    pub message: String,
-    pub form_schema: Option<serde_json::Value>,
-    pub done: bool,
-}
-
 // ===== 报告系统 =====
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -575,4 +568,51 @@ pub struct UserInsight {
     pub content: String,
     pub source: String,
     pub created_at: String,
+}
+
+// ===== v0.2 Skill 编排系统（重构后）=====
+
+/// Skill 执行时构建的数据上下文（喂给 AI 的结构化数据）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct SkillDataContext {
+    pub current_date: String,                        // YYYY-MM-DD
+    pub today_tasks: Vec<TaskItem>,                  // 今日待办（含 schedule_start/end、todo_status）
+    pub yesterday_tasks: Vec<TaskItem>,              // 昨日待办（用于 morning skill 识别未完成项）
+    pub activity_summary: ActivitySummary,           // 今日活动监测摘要
+    pub pomodoro_records: Vec<TimeRecord>,           // 今日番茄钟/专注记录
+    pub board_notes: Vec<TaskItem>,                  // 目标板便签
+    pub board_connections: Vec<Connection>,          // 目标板连线
+    pub user_profile_json: Option<String>,           // 用户画像 JSON（初始化问卷数据）
+    pub recent_reports: Vec<DailyReport>,            // 最近 7 天报告
+    pub goals: Vec<Goal>,                            // 学习目标
+}
+
+/// Skill 执行返回的统一结构
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SkillOutcome {
+    pub reply: String,                  // AI 最终回复（markdown）
+    pub tool_results: Vec<AiToolResult>, // 工具执行结果
+    pub saved_reports: Vec<String>,     // 已保存的报告 ID 列表
+    pub created_tasks: Vec<String>,      // 已创建的任务 ID 列表
+    pub needs_followup: bool,           // 是否需要用户继续输入
+}
+
+impl Default for SkillOutcome {
+    fn default() -> Self {
+        Self {
+            reply: String::new(),
+            tool_results: Vec::new(),
+            saved_reports: Vec::new(),
+            created_tasks: Vec::new(),
+            needs_followup: false,
+        }
+    }
+}
+
+/// 前端触发 Skill 时传给后端的参数（不同 Skill 用不同字段）
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct SkillParams {
+    pub date_range_text: Option<String>,   // report skill 用：自然语言日期范围（"这周"/"上个月"）
+    pub form_data: Option<serde_json::Value>, // init skill 用：表单提交数据
+    pub extra: Option<serde_json::Value>,   // 扩展字段
 }

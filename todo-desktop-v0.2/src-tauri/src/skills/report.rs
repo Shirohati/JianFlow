@@ -1,54 +1,46 @@
-use crate::models::SkillResponse;
-use serde_json::Value;
+use crate::models::SkillDataContext;
 
-pub fn report_skill_prompt() -> String {
-    r#"【周报/月报 Skill】
+pub fn build_prompt(ctx: &SkillDataContext, date_range_text: &str) -> String {
+    format!(r#"【周报/月报 Skill — 单次完成】
 
-=== 第一步：确认日期范围 ===
+你是笺流管家，用户希望生成一份周期总结报告。
 
-主动询问用户想要总结的时间段（如"你想总结哪段时间？"）。
-可能答案："这周"、"上个月"、"7月1号到7月10号"等。
-根据当前日期自行计算起止日期（YYYY-MM-DD 格式）。
+== 用户输入的时间范围 ==
+{date_range_text}
 
-=== 第二步：生成报告 ===
+== 数据上下文（JSON）==
+{ctx_json}
 
-自行计算出日期范围后，使用 report_list 工具读取该范围内的报告数据。
-分析报告数据，提取：
-  - 总体趋势（专注时长变化、完成率）
-  - 各分类的时间分配
-  - 主要问题和进步
-  - 对比前一周/月的改善情况
+== 你的任务 ==
+1. 根据用户输入的时间范围（"{date_range_text}"），结合 ctx.current_date（{current_date}），自行计算起止日期
+   - "这周"：本周一到今天
+   - "上周"：上周一到上周日
+   - "这个月"：本月 1 号到今天
+   - "上个月"：上月 1 号到上月最后一天
+   - "最近 N 天"：今天往前推 N 天
+   - "X月Y号到X月Z号"：按字面解析
+2. 从 recent_reports 中筛出该日期范围内的报告
+3. 如果 recent_reports 不够覆盖范围，可以用 ctx 中的其他数据补充
+4. 生成一份结构化的周期总结报告
+5. 通过 `report_save` 工具保存：
+   - date: 用今天日期 "{current_date}"
+   - user_summary: <markdown 报告正文>
+   - ai_data: <JSON 字符串，包含 total_focus_minutes / avg_daily_focus / completion_rate / category_breakdown 等>
+   - report_type: "weekly" 或 "monthly" 或 "custom"（根据用户输入判断）
 
-生成一份结构化的周期总结报告。
+== 报告内容要求 ==
+1. **周期概览**：总专注时长、平均每日专注、待办总完成率
+2. **趋势分析**：与前一个周期对比（如有 recent_reports 数据）
+3. **分类时间分配**：各学习/工作分类的时长占比
+4. **主要问题**：列出 2-3 个值得改进的点
+5. **进步与亮点**：列出 2-3 个值得保持的点
+6. **下个周期建议**：1-3 条具体建议
 
-=== 第三步：确认并保存 ===
-
-在报告下方附加【FORM】确认表单：
-
-【FORM】{"title":"报告确认","fields":[{"key":"confirmed","label":"是否确认这份报告？","type":"select","options":["确认","需要修改"]}]}【/FORM】
-
-如果用户选择"需要修改"，继续对话调整。
-如果用户选择"确认"，将报告保存到数据库（用工具调用保存）。
-
-当前日期可以通过"当前页面数据"获取。
-注意：日期范围由你自行计算，不要问用户具体的起止日期格式。
-"#.to_string()
-}
-
-pub fn process_report_form(_data: &Value) -> Result<SkillResponse, String> {
-    Ok(SkillResponse {
-        message: "正在生成报告…".to_string(),
-        form_schema: None,
-        done: false,
-    })
-}
-
-pub fn save_report(date: &str, user_summary: &str, ai_data: Option<String>, report_type: &str) -> crate::models::DailyReport {
-    crate::models::DailyReport {
-        date: date.to_string(),
-        user_summary: user_summary.to_string(),
-        ai_data,
-        report_type: report_type.to_string(),
-        created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-    }
+== 输出格式 ==
+1. 先调用 `report_save` 工具保存报告
+2. 然后向用户展示报告正文（markdown）作为最终回复"#,
+        date_range_text = date_range_text,
+        ctx_json = serde_json::to_string_pretty(ctx).unwrap_or_default(),
+        current_date = ctx.current_date
+    )
 }

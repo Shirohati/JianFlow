@@ -815,7 +815,7 @@ pub async fn activity_get_productivity_score(
 
 // --- AI 对话 ---
 
-fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
+pub fn execute_tool_call(tool_call: &AiToolCall, db: &Database, store: Option<&ActivityStore>) -> AiToolResult {
     match tool_call.tool.as_str() {
         "task_create" => {
             let title = tool_call.args.get("title").and_then(|v| v.as_str()).unwrap_or("新待办");
@@ -1138,6 +1138,159 @@ fn execute_tool_call(tool_call: &AiToolCall, db: &Database) -> AiToolResult {
             })).collect::<Vec<_>>());
             AiToolResult { success: true, message: format!("找到 {} 条报告", reports.len()), data: Some(data) }
         }
+        "settings_update" => {
+            let store = match store {
+                Some(s) => s,
+                None => return AiToolResult { success: false, message: "设置服务不可用".into(), data: None },
+            };
+            let key = tool_call.args.get("key").and_then(|v| v.as_str()).unwrap_or("");
+            let value = tool_call.args.get("value").and_then(|v| v.as_str()).unwrap_or("");
+            if key.is_empty() || value.is_empty() {
+                return AiToolResult { success: false, message: "缺少 key 或 value 参数".into(), data: None };
+            }
+            // 只允许修改安全字段
+            match key {
+                "ai_system_prompt" => {
+                    // 增量追加：保留原有提示词，追加新指令
+                    let current = store.get_settings().ai_system_prompt;
+                    let combined = if current.is_empty() {
+                        format!("\n[AI 自增指令] {}", value)
+                    } else {
+                        format!("{}\n[AI 自增指令] {}", current, value)
+                    };
+                    let mut updates = serde_json::Map::new();
+                    updates.insert("ai_system_prompt".to_string(), serde_json::json!(combined));
+                    store.update_settings(serde_json::Value::Object(updates));
+                    AiToolResult { success: true, message: "已追加 AI 系统提示词".into(), data: None }
+                }
+                "ai_model" | "show_thinking" | "ai_strict_mode" | "current_persona_id" => {
+                    let mut updates = serde_json::Map::new();
+                    let parsed: serde_json::Value = if value == "true" {
+                        serde_json::json!(true)
+                    } else if value == "false" {
+                        serde_json::json!(false)
+                    } else if let Ok(n) = value.parse::<f64>() {
+                        serde_json::json!(n)
+                    } else {
+                        serde_json::json!(value)
+                    };
+                    updates.insert(key.to_string(), parsed);
+                    store.update_settings(serde_json::Value::Object(updates));
+                    let field_label = match key {
+                        "ai_model" => "AI 模型",
+                        "show_thinking" => "显示思考链",
+                        "ai_strict_mode" => "严格模式",
+                        "current_persona_id" => "当前人设",
+                        _ => key,
+                    };
+                    AiToolResult { success: true, message: format!("已更新{}为：{}", field_label, value), data: None }
+                }
+                _ => AiToolResult { success: false, message: format!("不允许修改字段: {}", key), data: None },
+            }
+        }
+        "persona_switch" => {
+            let store = match store {
+                Some(s) => s,
+                None => return AiToolResult { success: false, message: "设置服务不可用".into(), data: None },
+            };
+            let persona_id = tool_call.args.get("persona_id").and_then(|v| v.as_str()).unwrap_or("");
+            if persona_id.is_empty() {
+                return AiToolResult { success: false, message: "缺少 persona_id 参数".into(), data: None };
+            }
+            // 验证人设是否存在
+            let personas = crate::ai_service::builtin_personas();
+            let valid = personas.iter().any(|p| p.id == persona_id);
+            if !valid {
+                return AiToolResult { success: false, message: format!("未找到人设: {}", persona_id).into(), data: None };
+            }
+            let mut updates = serde_json::Map::new();
+            updates.insert("current_persona_id".to_string(), serde_json::json!(persona_id));
+            store.update_settings(serde_json::Value::Object(updates));
+            let persona_name = personas.iter().find(|p| p.id == persona_id).map(|p| p.name.as_str()).unwrap_or(persona_id);
+            AiToolResult { success: true, message: format!("已切换为人设「{}」", persona_name), data: None }
+        }
+        "user_analyze" => {
+            let profile = crate::learning::analyze_user_behavior(db);
+            db.update_user_profile(profile.clone());
+            let days = profile.total_days_active;
+            let focus = profile.average_daily_focus;
+            let cats = profile.common_categories.join("、");
+            AiToolResult {
+                success: true,
+                message: format!("分析完成：活跃 {} 天，日均专注 {} 分钟，常用分类：{}", days, focus, if cats.is_empty() { "无" } else { &cats }),
+                data: None,
+            }
+        }
+        "report_save" => {
+            let date = tool_call.args.get("date").and_then(|v| v.as_str()).unwrap_or("");
+            let user_summary = tool_call.args.get("user_summary").and_then(|v| v.as_str()).unwrap_or("");
+            let report_type = tool_call.args.get("report_type").and_then(|v| v.as_str()).unwrap_or("daily");
+            if date.is_empty() || user_summary.is_empty() {
+                return AiToolResult { success: false, message: "缺少 date 或 user_summary 参数".into(), data: None };
+            }
+            let ai_data = tool_call.args.get("ai_data").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let report = crate::models::DailyReport {
+                date: date.to_string(),
+                user_summary: user_summary.to_string(),
+                ai_data,
+                report_type: report_type.to_string(),
+                created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            };
+            db.add_report(report);
+            AiToolResult { success: true, message: format!("已保存{}报告", report_type), data: None }
+        }
+        "task_batch_create" => {
+            let tasks = tool_call.args.get("tasks").and_then(|v| v.as_array());
+            match tasks {
+                Some(arr) => {
+                    let mut created = 0;
+                    for task_val in arr {
+                        let title = task_val.get("title").and_then(|v| v.as_str()).unwrap_or("新待办");
+                        let category_id = task_val.get("category_id").and_then(|v| v.as_str()).unwrap_or("cat_default");
+                        let priority = task_val.get("priority").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        let deadline = task_val.get("deadline").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        let note = task_val.get("note").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        let todo_date = task_val.get("todo_date").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        let schedule_start = task_val.get("schedule_start").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        let schedule_end = task_val.get("schedule_end").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        db.add_task(TaskItem {
+                            id: String::new(),
+                            r#type: "todo".into(),
+                            sub_type: "todo".into(),
+                            title: title.into(),
+                            content: String::new(),
+                            category_id: category_id.into(),
+                            priority,
+                            parent_id: None,
+                            sort_order: 0,
+                            status: "active".into(),
+                            grid_x: None, grid_y: None,
+                            home_x: None, home_y: None,
+                            todo_date,
+                            todo_status: None,
+                            recurrence: None,
+                            completed_at: None,
+                            deadline,
+                            pin_date: None,
+                            collapsed: false,
+                            note,
+                            time_start: None, time_end: None,
+                            note_width: None, note_height: None,
+                            open_width: None, open_height: None,
+                            group_id: None,
+                            board_tab: None,
+                            node_mode: None,
+                            schedule_start: schedule_start.clone(), schedule_end: schedule_end.clone(),
+                            created_at: String::new(),
+                            updated_at: String::new(),
+                        });
+                        created += 1;
+                    }
+                    AiToolResult { success: true, message: format!("已批量创建 {} 个待办", created), data: None }
+                }
+                None => AiToolResult { success: false, message: "缺少 tasks 参数或格式错误".into(), data: None },
+            }
+        }
         _ => AiToolResult { success: false, message: format!("未知工具: {}", tool_call.tool), data: None },
     }
 }
@@ -1156,19 +1309,10 @@ pub async fn ai_chat(
     // 获取用户画像
     let profile = db.get_user_profile();
 
-    // 第一轮：调用 AI 获取回复（含工具调用 + 用户画像）
-    let reply = ai_service::chat_with_tools_profile(
-        &settings,
-        &request.history,
-        &request.message,
-        &request.page,
-        request.page_data.as_deref(),
-        &profile,
-    )
-    .await?;
-
-    // 解析工具调用
-    let tool_calls = ai_service::parse_tool_calls(&reply);
+    // 第一轮：用 function calling 检测工具调用
+    let tools = ai_service::build_tool_schemas();
+    let detect_messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), false, Some(&profile));
+    let (reply, tool_calls) = ai_service::detect_tool_calls(&settings, &detect_messages, &tools).await?;
 
     let final_reply = if tool_calls.is_empty() {
         reply
@@ -1176,7 +1320,7 @@ pub async fn ai_chat(
         // 有工具调用：执行并反馈给 AI 生成最终回复
         let mut tool_results = Vec::new();
         for tc in &tool_calls {
-            let result = execute_tool_call(tc, &db);
+            let result = execute_tool_call(tc, &db, Some(&store));
             tool_results.push(result);
         }
 
@@ -1188,9 +1332,29 @@ pub async fn ai_chat(
             if r.success { format!("✅ 操作成功：{}", r.message) } else { format!("❌ 操作失败：{}", r.message) }
         }).collect();
 
-        let followup_msg = format!("以上工具调用的执行结果：\n{}\n\n请根据结果向用户做出最终回复。", tool_summary.join("\n"));
+        let followup_msg = format!("以上工具调用的执行结果。如果需要，你可以继续调用工具来完善分析。\n{}\n", tool_summary.join("\n"));
 
-        ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile).await?
+        let followup_messages = ai_service::build_messages(&settings, &followup_history, &followup_msg, &request.page, None, false, Some(&profile));
+        let (followup_reply, second_tools) = ai_service::detect_tool_calls(&settings, &followup_messages, &tools).await?;
+
+        // 第二轮工具调用（最多一轮，防止循环）
+        if second_tools.is_empty() {
+            followup_reply
+        } else {
+            let mut second_results = Vec::new();
+            for tc in &second_tools {
+                let result = execute_tool_call(tc, &db, Some(&store));
+                second_results.push(result);
+            }
+            let mut second_history = followup_history.clone();
+            second_history.push(ConversationMessage { role: "assistant".into(), content: followup_reply.clone() });
+            let second_summary: Vec<String> = second_results.iter().map(|r| {
+                if r.success { format!("✅ 操作成功：{}", r.message) } else { format!("❌ 操作失败：{}", r.message) }
+            }).collect();
+            let second_msg = format!("第二轮工具调用的执行结果：\n{}\n\n请据此做出最终回复。", second_summary.join("\n"));
+            // 第二轮不再启用工具
+            ai_service::chat_with_profile(&settings, &second_history, &second_msg, &request.page, None, &profile).await?
+        }
     };
 
     // 保存到对话记录
@@ -1217,8 +1381,13 @@ pub async fn ai_chat(
             match learning::extract_from_conversation(&settings_clone, &history_clone, &user_msg, &reply_clone).await {
                 Ok(insights) => {
                     if !insights.is_empty() {
+                        // 去重：写入前检查是否已存在相同 (insight_type, content)
+                        let existing = db_clone.get_user_insights();
                         for insight in insights {
-                            db_clone.add_user_insight(insight);
+                            let dup = existing.iter().any(|e| e.insight_type == insight.insight_type && e.content == insight.content);
+                            if !dup {
+                                db_clone.add_user_insight(insight);
+                            }
                         }
                     }
                 }
@@ -1243,62 +1412,62 @@ pub async fn ai_chat_stream(
         return Err("AI 未启用，请先在设置页配置 AI API".to_string());
     }
 
-    // 获取用户画像
     let profile = db.get_user_profile();
 
-    let messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), true, Some(&profile));
+    // 第一步：用 function calling 检测工具调用（不加 tool prompt，通过 API tools 参数传递）
+    let tools = ai_service::build_tool_schemas();
+    let detect_messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), false, Some(&profile));
+    let (_, detected_calls) = ai_service::detect_tool_calls(&settings, &detect_messages, &tools).await?;
 
-    let app_token = app.clone();
-    let app_reason = app.clone();
-
-    let stream_content = ai_service::call_ai_api_stream(
-        &settings,
-        &messages,
-        |token| { let _ = app_token.emit("ai-chat-token", token); },
-        |reasoning| { let _ = app_reason.emit("ai-chat-reasoning", reasoning); },
-    )
-    .await?;
-
-    // 解析工具调用
-    let tool_calls = ai_service::parse_tool_calls(&stream_content);
-
-    let final_reply = if tool_calls.is_empty() {
-        stream_content
-    } else {
-        // 执行工具
+    let final_reply = if !detected_calls.is_empty() {
+        // function calling 成功，执行工具
         let mut tool_results = Vec::new();
-        for tc in &tool_calls {
-            let result = execute_tool_call(tc, &db);
+        for tc in &detected_calls {
+            let result = execute_tool_call(tc, &db, Some(&store));
             tool_results.push(result);
         }
 
-        let mut followup_history = request.history.clone();
-        followup_history.push(ConversationMessage { role: "user".into(), content: request.message.clone() });
-        followup_history.push(ConversationMessage { role: "assistant".into(), content: stream_content.clone() });
-
+        // 构建带工具结果的上下文，用于流式回复
         let tool_summary: Vec<String> = tool_results.iter().map(|r| {
             if r.success { format!("✅ 操作成功：{}", r.message) } else { format!("❌ 操作失败：{}", r.message) }
         }).collect();
+        let stream_messages = build_stream_messages(&settings, &request, &profile, &tool_summary)?;
 
-        let followup_msg = format!("以上工具调用的执行结果：\n{}\n\n请根据结果向用户做出最终回复。", tool_summary.join("\n"));
+        let app_token = app.clone();
+        let app_reason = app.clone();
+        ai_service::call_ai_api_stream(
+            &settings,
+            &stream_messages,
+            |token| { let _ = app_token.emit("ai-chat-token", token); },
+            |reasoning| { let _ = app_reason.emit("ai-chat-reasoning", reasoning); },
+        ).await?
+    } else {
+        // 无工具调用，直接流式生成纯文本
+        let stream_messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), false, Some(&profile));
 
-        ai_service::chat_with_profile(&settings, &followup_history, &followup_msg, &request.page, None, &profile).await?
+        let app_token = app.clone();
+        let app_reason = app.clone();
+        ai_service::call_ai_api_stream(
+            &settings,
+            &stream_messages,
+            |token| { let _ = app_token.emit("ai-chat-token", token); },
+            |reasoning| { let _ = app_reason.emit("ai-chat-reasoning", reasoning); },
+        ).await?
     };
 
-    // 保存到对话记录
+    // 保存对话记录
     let mut db_messages: Vec<ConversationMessage> = request.history.clone();
     db_messages.push(ConversationMessage { role: "user".into(), content: request.message.clone() });
     db_messages.push(ConversationMessage { role: "assistant".into(), content: final_reply.clone() });
-    let conv = Conversation {
+    db.save_conversation(Conversation {
         id: request.session_id.clone(),
         title: String::new(),
         messages: db_messages,
         created_at: String::new(),
         updated_at: String::new(),
-    };
-    db.save_conversation(conv);
+    });
 
-    // 异步从对话中提取用户特征（Post-Conversation Extraction）
+    // 异步提取用户特征
     if settings.ai_api_enabled && !settings.ai_api_key.is_empty() {
         let settings_clone = settings.clone();
         let history_clone = request.history.clone();
@@ -1306,15 +1475,12 @@ pub async fn ai_chat_stream(
         let reply_clone = final_reply.clone();
         let db_clone = db.inner().clone();
         tokio::spawn(async move {
-            match learning::extract_from_conversation(&settings_clone, &history_clone, &user_msg, &reply_clone).await {
-                Ok(insights) => {
-                    if !insights.is_empty() {
-                        for insight in insights {
-                            db_clone.add_user_insight(insight);
-                        }
-                    }
+            if let Ok(insights) = learning::extract_from_conversation(&settings_clone, &history_clone, &user_msg, &reply_clone).await {
+                let existing = db_clone.get_user_insights();
+                for insight in insights {
+                    let dup = existing.iter().any(|e| e.insight_type == insight.insight_type && e.content == insight.content);
+                    if !dup { db_clone.add_user_insight(insight); }
                 }
-                Err(_) => {} // 静默失败
             }
         });
     }
@@ -1325,6 +1491,19 @@ pub async fn ai_chat_stream(
     }));
 
     Ok(())
+}
+
+/// 构建带工具执行结果的流式消息列表
+fn build_stream_messages(
+    settings: &ActivitySettings,
+    request: &AiChatRequest,
+    profile: &UserProfile,
+    tool_summary: &[String],
+) -> Result<Vec<ConversationMessage>, String> {
+    let mut msgs = ai_service::build_messages(settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), false, Some(profile));
+    let tool_msg = format!("以下操作已执行完成：\n{}", tool_summary.join("\n"));
+    msgs.push(ConversationMessage { role: "system".into(), content: tool_msg });
+    Ok(msgs)
 }
 
 // --- 人设 ---
@@ -1419,129 +1598,20 @@ pub fn user_delete_insight(db: State<'_, Database>, id: String) -> bool {
     db.delete_user_insight(&id)
 }
 
-// --- Skill 系统 ---
-
 #[tauri::command]
-pub fn skill_trigger(
+pub async fn skill_run(
     db: State<'_, Database>,
     store: State<'_, Arc<ActivityStore>>,
     name: String,
-) -> Result<SkillResponse, String> {
-    match name.as_str() {
-        "init" => {
-            let has_profile = db.get_user_profile_json().is_some();
-            if has_profile {
-                Ok(SkillResponse {
-                    message: "您已经完成过初始化。如需重新设置，请填写以下问卷：".to_string(),
-                    form_schema: Some(skills::init::init_form_schema()),
-                    done: false,
-                })
-            } else {
-                Ok(SkillResponse {
-                    message: "欢迎使用笺流管家！请先填写以下问卷，让我更好地了解您：".to_string(),
-                    form_schema: Some(skills::init::init_form_schema()),
-                    done: false,
-                })
-            }
-        }
-        "evening" => {
-            let has_profile = db.get_user_profile_json().is_some();
-            if !has_profile {
-                return Ok(SkillResponse {
-                    message: "请先完成初始化设置（点击「初始化」按钮），然后才能使用晚间总结功能。".to_string(),
-                    form_schema: None,
-                    done: true,
-                });
-            }
-            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-            let summary = store.get_daily_summary(&today);
-            let tasks = db.get_tasks(crate::models::TaskFilters {
-                todo_date: Some(today.clone()),
-                ..Default::default()
-            });
-            let done = tasks.iter().filter(|t| t.todo_status.as_deref() == Some("completed")).count();
-            let total = tasks.len();
-
-            let _cats: Vec<String> = summary.category_breakdown.iter()
-                .map(|(k, v)| format!("- {}: {} 分钟", k, v / 60)).collect();
-
-            Ok(SkillResponse {
-                message: format!(
-                    "今天您共活跃了 {} 分钟，待办完成 {}/{}。\n\n\
-                    我正在分析今天的数据，为您生成回顾问题……",
-                    summary.total_active_seconds / 60, done, total
-                ),
-                form_schema: None,
-                done: false,
-            })
-        }
-        "morning" => {
-            let has_profile = db.get_user_profile_json().is_some();
-            if !has_profile {
-                return Ok(SkillResponse {
-                    message: "请先完成初始化设置（点击「初始化」按钮），然后才能使用晨间规划功能。".to_string(),
-                    form_schema: None,
-                    done: true,
-                });
-            }
-            let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-            let existing = db.get_tasks(crate::models::TaskFilters {
-                todo_date: Some(today),
-                ..Default::default()
-            });
-            let existing_count = existing.len();
-            Ok(SkillResponse {
-                message: format!(
-                    "早安！今天已有 {} 项待办。在规划之前，我想先了解一下：\n\n\
-                    今天有什么时间安排或约束吗？有什么想重点推进的事情？",
-                    existing_count
-                ),
-                form_schema: None,
-                done: false,
-            })
-        }
-        "report" => {
-            let has_profile = db.get_user_profile_json().is_some();
-            if !has_profile {
-                return Ok(SkillResponse {
-                    message: "请先完成初始化设置（点击「初始化」按钮），然后才能使用周报月报功能。".to_string(),
-                    form_schema: None,
-                    done: true,
-                });
-            }
-            Ok(SkillResponse {
-                message: "您想总结哪个时间段？例如：这周、上个月、7月1号到7月10号。".to_string(),
-                form_schema: None,
-                done: false,
-            })
-        }
-        _ => Err(format!("未知 skill: {}", name)),
-    }
+    params: SkillParams,
+) -> Result<SkillOutcome, String> {
+    let settings = store.get_settings();
+    skills::orchestrator::run_skill(&name, &params, &db, &store, &settings).await
 }
 
 #[tauri::command]
-pub fn skill_submit(
-    db: State<'_, Database>,
-    name: String,
-    form_data: Value,
-) -> Result<SkillResponse, String> {
-    match name.as_str() {
-        "init" => {
-            let result = skills::init::process_init_form(&form_data)?;
-            if result.done {
-                if let Some(profile_json) = form_data.get("profile_json").and_then(|v| v.as_str()) {
-                    db.update_user_profile_json(profile_json);
-                } else {
-                    // Save the form data as profile_json
-                    db.update_user_profile_json(&form_data.to_string());
-                }
-            }
-            Ok(result)
-        }
-        "evening" => skills::evening::process_evening_form(&form_data),
-        "morning" => skills::morning::process_morning_form(&form_data),
-        _ => Err(format!("未知 skill: {}", name)),
-    }
+pub fn skill_get_init_form() -> serde_json::Value {
+    skills::init::init_form_schema()
 }
 
 #[tauri::command]
@@ -1563,7 +1633,7 @@ pub fn user_update_profile_json(db: State<'_, Database>, profile_json: String) {
     db.update_user_profile_json(&profile_json);
 }
 
-// Default impl for TaskFilters to use in skill_trigger
+// Default impl for TaskFilters
 impl Default for TaskFilters {
     fn default() -> Self {
         Self {

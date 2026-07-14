@@ -1,3 +1,5 @@
+import { skillApi, type SkillParams, type SkillOutcome } from '../api';
+
 export type SkillName = 'init' | 'morning' | 'evening' | 'report';
 export type SkillStatus = 'ready' | 'locked' | 'running' | 'done';
 
@@ -29,6 +31,10 @@ export function setSkillStatus(name: SkillName, status: SkillStatus): void {
 
 export function setOnTrigger(cb: (name: SkillName) => void): void {
   onTrigger = cb;
+}
+
+export async function triggerSkill(name: SkillName, params: SkillParams = {}): Promise<SkillOutcome> {
+  return skillApi.run(name, params);
 }
 
 export function renderToolbar(): string {
