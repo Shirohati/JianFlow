@@ -265,6 +265,8 @@ async function handleSkillTrigger(name: SkillName): Promise<void> {
 
 async function doSend(text: string): Promise<void> {
   if (!text || chatPanel.streaming) return;
+  // 清理上一次未完成的监听器，避免残留监听重复触发 token
+  if (streamingCleanup) { streamingCleanup(); streamingCleanup = null; }
 
   messages.push({ role: 'user', content: text });
   const msgIdx = messages.length;
@@ -310,6 +312,8 @@ async function doSend(text: string): Promise<void> {
         }
       },
       onDone: (result) => {
+        // 清理本次注册的 4 个事件监听器，防止下次对话重复收到 token
+        if (streamingCleanup) { streamingCleanup(); streamingCleanup = null; }
         const doneMsg = messages[msgIdx];
         if (doneMsg) {
           if (doneMsg._tokenTimer) { clearTimeout(doneMsg._tokenTimer); doneMsg._tokenTimer = undefined; }
@@ -330,6 +334,8 @@ async function doSend(text: string): Promise<void> {
         }, 2000);
       },
       onError: (error) => {
+        // 清理本次注册的事件监听器
+        if (streamingCleanup) { streamingCleanup(); streamingCleanup = null; }
         messages[msgIdx] = { role: 'assistant', content: '抱歉，出了点问题：' + error + '\n\n请检查 AI 配置是否正确。' };
         chatPanel.streaming = false;
         chatPanel.enableInput();
@@ -337,6 +343,8 @@ async function doSend(text: string): Promise<void> {
       },
     });
   } catch (err: any) {
+    // 清理本次注册的事件监听器
+    if (streamingCleanup) { streamingCleanup(); streamingCleanup = null; }
     messages[msgIdx] = { role: 'assistant', content: '抱歉，出了点问题：' + (err?.message || String(err)) + '\n\n请检查 AI 配置是否正确。' };
     chatPanel.streaming = false;
     chatPanel.enableInput();

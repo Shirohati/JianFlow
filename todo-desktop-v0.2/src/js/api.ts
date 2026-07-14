@@ -322,7 +322,6 @@ export interface AiChatRequest {
   session_id: string;
   message: string;
   page: string;
-  page_data?: string;
   history?: ConversationMessage[];
 }
 

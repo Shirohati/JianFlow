@@ -535,10 +535,10 @@ pub async fn chat_with_profile(
     history: &[ConversationMessage],
     message: &str,
     page: &str,
-    page_data: Option<&str>,
+    context_json: Option<&str>,
     profile: &UserProfile,
 ) -> Result<String, String> {
-    let messages = build_messages(settings, history, message, page, page_data, false, Some(profile));
+    let messages = build_messages(settings, history, message, page, context_json, false, Some(profile));
     call_ai_api(settings, &messages).await
 }
 
@@ -548,25 +548,18 @@ pub async fn chat_with_tools_profile(
     history: &[ConversationMessage],
     message: &str,
     page: &str,
-    page_data: Option<&str>,
+    context_json: Option<&str>,
     profile: &UserProfile,
 ) -> Result<String, String> {
-    let messages = build_messages(settings, history, message, page, page_data, true, Some(profile));
+    let messages = build_messages(settings, history, message, page, context_json, true, Some(profile));
     call_ai_api(settings, &messages).await
-}
-
-/// 根据 skill 名称获取对应的 system prompt
-/// 注：旧版 skill prompt 函数已删除（改为 build_prompt(ctx) 单次调用流程）。
-/// 此函数保留为 stub 返回 None，待 Task 5 orchestrator 重写时统一清理。
-pub fn get_skill_prompt(_skill_name: &str) -> Option<String> {
-    None
 }
 
 /// 检测消息中是否包含 skill 触发命令
 pub fn detect_skill_command(message: &str) -> Option<String> {
     if message.starts_with("/skill ") {
         let name = message.trim_start_matches("/skill ").trim().to_string();
-        if matches!(name.as_str(), "init" | "evening" | "morning" | "report" | "board") {
+        if matches!(name.as_str(), "init" | "evening" | "morning" | "report") {
             return Some(name);
         }
     }
@@ -578,7 +571,7 @@ pub fn build_messages(
     history: &[ConversationMessage],
     message: &str,
     page: &str,
-    page_data: Option<&str>,
+    context_json: Option<&str>,
     enable_tools: bool,
     profile: Option<&UserProfile>,
 ) -> Vec<ConversationMessage> {
@@ -610,22 +603,13 @@ pub fn build_messages(
     // 注入项目数据说明，让 AI 理解业务语义
     messages.push(ConversationMessage { role: "system".into(), content: domain_context_prompt() });
 
-    // 如果检测到 skill 命令，注入对应的 skill prompt
-    if let Some(skill_name) = detect_skill_command(message) {
-        if let Some(skill_prompt) = get_skill_prompt(&skill_name) {
-            messages.push(ConversationMessage { role: "system".into(), content: skill_prompt });
-        }
-        // 如果是 board skill，也注入 board 增强 prompt
-        if skill_name == "board" {
-            if let Some(board_prompt) = get_skill_prompt("board") {
-                messages.push(ConversationMessage { role: "system".into(), content: board_prompt });
-            }
-        }
-    } else if let Some(skill_name) = history.iter().find_map(|m| detect_skill_command(&m.content)) {
-        // 非 skill 命令但历史中有 skill 触发（如表单提交后的【FORM_DATA】），
-        // 同样注入 skill prompt 让 AI 知道如何继续处理
-        if let Some(skill_prompt) = get_skill_prompt(&skill_name) {
-            messages.push(ConversationMessage { role: "system".into(), content: skill_prompt });
+    // 注入实时数据上下文（如果有）：让 chat 路径也能拿到 today_tasks 等实时数据
+    if let Some(ctx_json) = context_json {
+        if !ctx_json.is_empty() {
+            messages.push(ConversationMessage {
+                role: "system".into(),
+                content: format!("== 当前实时数据上下文（JSON）==\n{}", ctx_json),
+            });
         }
     }
 

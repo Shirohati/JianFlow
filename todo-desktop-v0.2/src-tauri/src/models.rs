@@ -426,7 +426,6 @@ pub struct AiChatRequest {
     pub session_id: String,
     pub message: String,
     pub page: String,
-    pub page_data: Option<String>,
     #[serde(default)]
     pub history: Vec<ConversationMessage>,
 }

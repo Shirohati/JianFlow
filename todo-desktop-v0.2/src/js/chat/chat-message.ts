@@ -87,16 +87,125 @@ function escapeHtml(str: string): string {
 }
 
 function renderMarkdown(text: string): string {
-  let html = escapeHtml(text);
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  html = html.replace(/### (.+)/g, '<h4>$1</h4>');
-  html = html.replace(/## (.+)/g, '<h3>$1</h3>');
-  html = html.replace(/# (.+)/g, '<h2>$1</h2>');
-  html = html.replace(/- (.+)/g, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-  html = html.replace(/\n/g, '<br>');
-  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  const escaped = escapeHtml(text);
+  const lines = escaped.split('\n');
+  const result: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // 代码块
+    if (line.startsWith('```')) {
+      const lang = line.slice(3).trim();
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // 跳过结束的 ```
+      result.push(`<pre><code class="language-${lang}">${codeLines.join('\n')}</code></pre>`);
+      continue;
+    }
+    // 表格（GFM：当前行有 |，且下一行是分隔行）
+    if (line.includes('|') && i + 1 < lines.length && /^\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && lines[i + 1].includes('-')) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].includes('|')) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      result.push(renderTable(tableLines));
+      continue;
+    }
+    // 分割线
+    if (/^(---|\*\*\*)\s*$/.test(line)) {
+      result.push('<hr>');
+      i++;
+      continue;
+    }
+    // 标题 # / ## / ###
+    const hMatch = line.match(/^(#{1,3})\s+(.+)/);
+    if (hMatch) {
+      const level = hMatch[1].length;
+      result.push(`<h${level + 1}>${renderInline(hMatch[2])}</h${level + 1}>`);
+      i++;
+      continue;
+    }
+    // 引用块（escapeHtml 已将 > 转为 &gt;）
+    if (line.startsWith('&gt; ')) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && lines[i].startsWith('&gt; ')) {
+        quoteLines.push(lines[i].slice(5));
+        i++;
+      }
+      result.push(`<blockquote>${renderInline(quoteLines.join('<br>'))}</blockquote>`);
+      continue;
+    }
+    // 有序列表
+    if (/^\d+\.\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+        items.push(`<li>${renderInline(lines[i].replace(/^\d+\.\s+/, ''))}</li>`);
+        i++;
+      }
+      result.push(`<ol>${items.join('')}</ol>`);
+      continue;
+    }
+    // 无序列表
+    if (/^[-*]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
+        items.push(`<li>${renderInline(lines[i].replace(/^[-*]\s+/, ''))}</li>`);
+        i++;
+      }
+      result.push(`<ul>${items.join('')}</ul>`);
+      continue;
+    }
+    // 普通段落
+    if (line.trim()) {
+      result.push(`<p>${renderInline(line)}</p>`);
+    } else {
+      result.push('<br>');
+    }
+    i++;
+  }
+  return result.join('\n');
+}
+
+function renderTable(lines: string[]): string {
+  const splitRow = (l: string): string[] => {
+    let s = l.trim();
+    if (s.startsWith('|')) s = s.slice(1);
+    if (s.endsWith('|')) s = s.slice(0, -1);
+    return s.split('|').map(c => c.trim());
+  };
+  const rows = lines.map(splitRow);
+  // 找到分隔行（每个单元格都是 :-- / -- / :--: 等形式）并排除
+  const isSeparator = (r: string[]): boolean => r.length > 0 && r.every(c => /^:?-+:?$/.test(c));
+  const dataRows = rows.filter(r => !isSeparator(r));
+  if (dataRows.length < 1) return lines.join('<br>');
+  const header = dataRows[0];
+  const body = dataRows.slice(1);
+  let html = '<table><thead><tr>';
+  header.forEach(h => { html += `<th>${renderInline(h)}</th>`; });
+  html += '</tr></thead><tbody>';
+  body.forEach(row => {
+    html += '<tr>';
+    row.forEach(cell => { html += `<td>${renderInline(cell)}</td>`; });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
   return html;
+}
+
+function renderInline(text: string): string {
+  let t = text;
+  // 行内代码（先处理，避免内部内容被其他规则误伤）
+  t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // 粗体
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // 斜体
+  t = t.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  // 链接 [文本](URL)
+  t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  return t;
 }

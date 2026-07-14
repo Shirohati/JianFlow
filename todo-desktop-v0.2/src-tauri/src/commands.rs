@@ -1309,9 +1309,13 @@ pub async fn ai_chat(
     // 获取用户画像
     let profile = db.get_user_profile();
 
+    // 构建实时数据上下文，让 chat 路径也能拿到 today_tasks 等数据
+    let ctx = crate::skills::data_context::build_context(&db, &store);
+    let ctx_json = serde_json::to_string(&ctx).ok();
+
     // 第一轮：用 function calling 检测工具调用
     let tools = ai_service::build_tool_schemas();
-    let detect_messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), false, Some(&profile));
+    let detect_messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, ctx_json.as_deref(), false, Some(&profile));
     let (reply, tool_calls) = ai_service::detect_tool_calls(&settings, &detect_messages, &tools).await?;
 
     let final_reply = if tool_calls.is_empty() {
@@ -1414,9 +1418,13 @@ pub async fn ai_chat_stream(
 
     let profile = db.get_user_profile();
 
+    // 构建实时数据上下文，让 chat 路径也能拿到 today_tasks 等数据
+    let ctx = crate::skills::data_context::build_context(&db, &store);
+    let ctx_json = serde_json::to_string(&ctx).ok();
+
     // 第一步：用 function calling 检测工具调用（不加 tool prompt，通过 API tools 参数传递）
     let tools = ai_service::build_tool_schemas();
-    let detect_messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), false, Some(&profile));
+    let detect_messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, ctx_json.as_deref(), false, Some(&profile));
     let (_, detected_calls) = ai_service::detect_tool_calls(&settings, &detect_messages, &tools).await?;
 
     let final_reply = if !detected_calls.is_empty() {
@@ -1431,7 +1439,7 @@ pub async fn ai_chat_stream(
         let tool_summary: Vec<String> = tool_results.iter().map(|r| {
             if r.success { format!("✅ 操作成功：{}", r.message) } else { format!("❌ 操作失败：{}", r.message) }
         }).collect();
-        let stream_messages = build_stream_messages(&settings, &request, &profile, &tool_summary)?;
+        let stream_messages = build_stream_messages(&settings, &request, &profile, &tool_summary, ctx_json.as_deref())?;
 
         let app_token = app.clone();
         let app_reason = app.clone();
@@ -1443,7 +1451,7 @@ pub async fn ai_chat_stream(
         ).await?
     } else {
         // 无工具调用，直接流式生成纯文本
-        let stream_messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), false, Some(&profile));
+        let stream_messages = ai_service::build_messages(&settings, &request.history, &request.message, &request.page, ctx_json.as_deref(), false, Some(&profile));
 
         let app_token = app.clone();
         let app_reason = app.clone();
@@ -1499,8 +1507,9 @@ fn build_stream_messages(
     request: &AiChatRequest,
     profile: &UserProfile,
     tool_summary: &[String],
+    context_json: Option<&str>,
 ) -> Result<Vec<ConversationMessage>, String> {
-    let mut msgs = ai_service::build_messages(settings, &request.history, &request.message, &request.page, request.page_data.as_deref(), false, Some(profile));
+    let mut msgs = ai_service::build_messages(settings, &request.history, &request.message, &request.page, context_json, false, Some(profile));
     let tool_msg = format!("以下操作已执行完成：\n{}", tool_summary.join("\n"));
     msgs.push(ConversationMessage { role: "system".into(), content: tool_msg });
     Ok(msgs)
