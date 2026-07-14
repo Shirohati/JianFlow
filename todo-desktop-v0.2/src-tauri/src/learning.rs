@@ -89,6 +89,7 @@ pub fn analyze_user_behavior(db: &Database) -> UserProfile {
         last_updated: now_str(),
         total_days_active,
         average_daily_focus,
+        profile_json: old_profile.profile_json,
     }
 }
 
@@ -250,6 +251,18 @@ pub async fn extract_from_conversation(
             }
         }
     }
+
+    // 去重：按 (insight_type, content) 去重，保留首次出现的
+    let mut seen = std::collections::HashSet::new();
+    insights.retain(|i| {
+        let key = (i.insight_type.clone(), i.content.clone());
+        if seen.contains(&key) {
+            false
+        } else {
+            seen.insert(key);
+            true
+        }
+    });
 
     Ok(insights)
 }

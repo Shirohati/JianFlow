@@ -877,3 +877,191 @@ textarea.input {
   transform: rotate(-30deg);
   transform-origin: left top;
 }
+
+/* ===== Chat Form (cf-) ===== */
+.cf-form {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-light, #e8e5df);
+  border-radius: var(--radius, 12px);
+  padding: 14px 16px;
+  margin: 8px 0;
+}
+.cf-form-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+  color: var(--text, #3a3a3a);
+}
+.cf-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cf-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-light, #7a7a7a);
+}
+.cf-required {
+  color: var(--danger, #e07b6e);
+  margin-right: 2px;
+}
+.cf-input, .cf-textarea, .cf-select {
+  padding: 8px 10px;
+  border: 1.5px solid var(--border, #e8e5df);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  background: var(--bg, #faf8f3);
+  color: var(--text, #3a3a3a);
+  transition: border-color 0.15s;
+}
+.cf-input:focus, .cf-textarea:focus, .cf-select:focus {
+  border-color: var(--primary, #5b7fff);
+  outline: none;
+}
+.cf-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+.cf-tags-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cf-tags-input {
+  padding: 6px 10px;
+  border: 1.5px solid var(--border, #e8e5df);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  background: var(--bg, #faf8f3);
+}
+.cf-tags-input:focus {
+  border-color: var(--primary, #5b7fff);
+  outline: none;
+}
+.cf-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.cf-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--primary-light, #eef1ff);
+  color: var(--primary, #5b7fff);
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.cf-tag-del {
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  opacity: 0.6;
+}
+.cf-tag-del:hover {
+  opacity: 1;
+}
+.cf-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+.cf-btn-submit {
+  padding: 7px 18px;
+  border-radius: 8px;
+  border: none;
+  background: var(--primary, #5b7fff);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cf-btn-submit:hover {
+  background: var(--primary-hover, #4a6ae8);
+}
+.cf-btn-cancel {
+  padding: 7px 18px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border, #e8e5df);
+  background: transparent;
+  color: var(--text-light, #7a7a7a);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cf-btn-cancel:hover {
+  background: var(--bg2, #f0ede7);
+}
+.cf-form-submitted {
+  font-size: 0.82rem;
+  color: var(--success, #4caf84);
+  padding: 6px 0;
+}
+
+/* ===== Chat Skill Toolbar (cs-) ===== */
+.cs-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border-light, #f0ede7);
+  background: var(--card-bg, #fff);
+  flex-shrink: 0;
+}
+.cs-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-light, #f0ede7);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-family: inherit;
+  color: var(--text, #3a3a3a);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.cs-btn:hover {
+  background: var(--bg2, #f0ede7);
+  border-color: var(--border, #e8e5df);
+}
+.cs-btn[data-status="locked"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.cs-btn[data-status="running"] {
+  background: var(--primary-light, #eef1ff);
+  border-color: var(--primary, #5b7fff);
+  color: var(--primary, #5b7fff);
+  animation: cs-pulse 1.2s ease-in-out infinite;
+}
+.cs-btn[data-status="done"] {
+  background: var(--success-light, #edf7f2);
+  border-color: var(--success, #4caf84);
+  color: var(--success, #4caf84);
+}
+.cs-icon {
+  font-size: 0.85rem;
+}
+.cs-label {
+  font-weight: 500;
+}
+
+@keyframes cs-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
