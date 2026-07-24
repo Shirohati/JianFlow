@@ -94,7 +94,7 @@ main (集线器)
 
 | 日期 | 对话摘要 | 涉及文件 | 版本 |
 |------|----------|----------|------|
-| 2026-07-24 | 初始化 feat/v0.1 分支：归档 v0.2、重置工作基线、创建开发规范 | .gitattributes, .gitignore, DEVELOPMENT.md | v0.1 |
+| 2026-07-24 | 初始化 feat/v0.1 分支：归档 v0.2、重置工作基线、创建开发规范 | .gitattributes, .gitignore, DEVELOPMENT.md, GIT-WORKFLOW.md | v0.1 |
 
 ---
 
