@@ -27,6 +27,9 @@ interface DragInfo {
   origPositions: Map<string, { x: number; y: number }>;
   isGroupNode: boolean;
   groupId: string | null;
+  /** Feature: dragging a subtask out to create a new note */
+  isSubtaskDrag: boolean;
+  subtaskData: { title: string; content: string; parentId: string } | null;
 }
 
 interface ConnDraw {
@@ -445,6 +448,7 @@ export const boardPage = {
         const hasContent = t.content && t.content.trim();
         h += `<div class="note__subtask-item" data-id="${t.id}">
           <button class="note__subtask-toggle" data-id="${t.id}">${done ? icon('check-square') : icon('square')}</button>
+          <div class="note__subtask-drag" data-subtask-drag="${t.id}">${icon('grip-vertical', 'size="10"')}</div>
           <div class="note__subtask-body">
             <span class="note__subtask-text ${done ? 'note__subtask-text--completed' : ''}" data-field="subtask-title" data-sub-id="${t.id}">${utils.escapeHtml(t.title)}</span>
             <div class="note__subtask-content ${hasContent ? '' : 'note__subtask-content--empty'}" data-field="subtask-content" data-sub-id="${t.id}">${hasContent ? utils.escapeHtml(t.content) : '<span class="note__subtask-content-placeholder">点击添加备注...</span>'}</div>
@@ -558,6 +562,36 @@ export const boardPage = {
     if (!canvas) return;
 
     canvas.addEventListener('pointerdown', (e) => {
+      const subtaskDrag = (e.target as HTMLElement).closest('[data-subtask-drag]') as HTMLElement | null;
+      if (subtaskDrag) {
+        e.preventDefault();
+        e.stopPropagation();
+        const subId = subtaskDrag.dataset.subtaskDrag!;
+        const allTasks = store.get<TaskItem[]>('allTasks') ?? [];
+        const subTask = allTasks.find(t => t.id === subId);
+        if (!subTask) return;
+        const canvasPos = screenToCanvas(e.clientX, e.clientY);
+        drag = {
+          noteId: subId,
+          startX: e.clientX,
+          startY: e.clientY,
+          offsetX: canvasPos.x - 0,
+          offsetY: canvasPos.y - 0,
+          origGX: 0,
+          origGY: 0,
+          moved: false,
+          isMultiDrag: false,
+          origPositions: new Map(),
+          isGroupNode: false,
+          groupId: null,
+          isSubtaskDrag: true,
+          subtaskData: { title: subTask.title, content: subTask.content || '', parentId: subTask.parent_id! },
+        };
+        document.addEventListener('pointermove', onDragMove);
+        document.addEventListener('pointerup', onDragUp);
+        return;
+      }
+
       const port = (e.target as HTMLElement).closest('.note__port') as HTMLElement | null;
       if (port) {
         e.preventDefault();
@@ -665,6 +699,8 @@ export const boardPage = {
             origPositions,
             isGroupNode: false,
             groupId: null,
+            isSubtaskDrag: false,
+            subtaskData: null,
           };
           document.addEventListener('pointermove', onDragMove);
           document.addEventListener('pointerup', onDragUp);
@@ -753,6 +789,8 @@ export const boardPage = {
           origPositions,
           isGroupNode: true,
           groupId: gid,
+          isSubtaskDrag: false,
+          subtaskData: null,
         };
         document.addEventListener('pointermove', onDragMove);
         document.addEventListener('pointerup', onDragUp);
@@ -779,7 +817,7 @@ export const boardPage = {
       const isEditable = (e.target as HTMLElement).closest('[contenteditable="true"]');
       if (isEditable) { e.stopPropagation(); return; }
 
-      const isAction = (e.target as HTMLElement).closest('.note__port, .note-menu-btn, .note__subtask-toggle, .note__subtask-quick, .note__subtask-delete, .note__subtask-add-btn, button, input');
+      const isAction = (e.target as HTMLElement).closest('.note__port, .note-menu-btn, .note__subtask-toggle, .note__subtask-quick, .note__subtask-delete, .note__subtask-add-btn, [data-subtask-drag], button, input');
       if (isAction) return;
 
       const isField = (e.target as HTMLElement).closest('[data-field]');
@@ -828,6 +866,8 @@ export const boardPage = {
         origPositions,
         isGroupNode: false,
         groupId: null,
+        isSubtaskDrag: false,
+        subtaskData: null,
       };
 
       document.addEventListener('pointermove', onDragMove);
@@ -853,9 +893,9 @@ export const boardPage = {
       if (subtaskContentEl) { const subId = subtaskContentEl.dataset.subId!; boardPage.startEditSubtaskContent(subId); return; }
 
       const titleEl = t.closest('[data-field="title"]') as HTMLElement | null;
-      if (titleEl) { const n = titleEl.closest('.note') as HTMLElement; if (n && openIds.has(n.dataset.id!)) { boardPage.startEdit(n.dataset.id!, 'title'); return; } }
+      if (titleEl && !titleEl.closest('[contenteditable="true"]')) { const n = titleEl.closest('.note') as HTMLElement; if (n && openIds.has(n.dataset.id!)) { boardPage.startEdit(n.dataset.id!, 'title', e); return; } }
       const contentEl = t.closest('[data-field="content"]') as HTMLElement | null;
-      if (contentEl) { const n = contentEl.closest('.note') as HTMLElement; if (n && openIds.has(n.dataset.id!)) { boardPage.startEdit(n.dataset.id!, 'content'); return; } }
+      if (contentEl) { const n = contentEl.closest('.note') as HTMLElement; if (n && openIds.has(n.dataset.id!)) { if (contentEl.closest('[contenteditable="true"]')) return; boardPage.startEdit(n.dataset.id!, 'content', e); return; } }
 
       const connPath = t.closest('.note__conn') as HTMLElement | null;
       if (connPath) {
@@ -916,7 +956,7 @@ export const boardPage = {
       }
       // Double-click on note title = start editing title
       const titleEl = (e.target as HTMLElement).closest('[data-field="title"]') as HTMLElement | null;
-      if (titleEl && noteId && openIds.has(noteId)) {
+      if (titleEl && noteId && openIds.has(noteId) && titleEl.contentEditable !== 'true') {
         boardPage.startEdit(noteId, 'title');
         return;
       }
@@ -1531,19 +1571,39 @@ export const boardPage = {
     await boardPage.render();
   },
 
-  startEdit(noteId: string, field: string): void {
+  startEdit(noteId: string, field: string, clickEvent?: MouseEvent): void {
     const el = document.querySelector(`.note[data-id="${noteId}"] [data-field="${field}"]`) as HTMLElement | null;
     if (!el) return;
+    // If already editing, just focus without resetting text
+    if (el.contentEditable === 'true') {
+      if (clickEvent) {
+        const range = document.caretRangeFromPoint(clickEvent.clientX, clickEvent.clientY);
+        if (range) {
+          window.getSelection()?.removeAllRanges();
+          window.getSelection()?.addRange(range);
+        }
+      }
+      el.focus();
+      return;
+    }
     const t = (store.get<TaskItem[]>('allTasks') ?? []).find(t => t.id === noteId);
     if (t) el.innerText = (t as any)[field] ?? '';
     el.contentEditable = 'true';
     el.classList.add(field === 'title' ? 'note__title--editing' : 'note__content--editing');
     el.focus();
-    const rng = document.createRange();
-    rng.selectNodeContents(el);
-    rng.collapse(false);
-    window.getSelection()?.removeAllRanges();
-    window.getSelection()?.addRange(rng);
+    if (clickEvent) {
+      const range = document.caretRangeFromPoint(clickEvent.clientX, clickEvent.clientY);
+      if (range) {
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
+      }
+    } else {
+      const rng = document.createRange();
+      rng.selectNodeContents(el);
+      rng.collapse(false);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(rng);
+    }
     let saved = false;
     const cleanup = () => { el.contentEditable = 'false'; el.classList.remove(field === 'title' ? 'note__title--editing' : 'note__content--editing'); };
     const save = async () => {
@@ -1571,7 +1631,6 @@ export const boardPage = {
     const note = allTasks.find(t => t.id === noteId);
     if (!note) return;
 
-    // Save any existing edits first
     const existing = document.querySelector('.fullscreen-editor');
     if (existing) existing.remove();
 
@@ -1579,16 +1638,194 @@ export const boardPage = {
     editor.className = 'fullscreen-editor';
     editor.innerHTML = `
       <div class="fullscreen-editor__header">
-        <span class="fullscreen-editor__title">${utils.escapeHtml(note.title)}</span>
-        <button class="btn btn--ghost fullscreen-editor__close">${icon('x', 'size="20"')} 关闭</button>
+        <div class="fullscreen-editor__header-left">
+          <span class="fullscreen-editor__title">${utils.escapeHtml(note.title)}</span>
+          <div class="fullscreen-editor__mode-switch">
+            <button class="btn btn--sm fullscreen-editor__mode-btn fullscreen-editor__mode-btn--active" data-mode="plain">${icon('file-text')} 记事本</button>
+            <button class="btn btn--sm fullscreen-editor__mode-btn" data-mode="markdown">${icon('code')} Markdown</button>
+          </div>
+        </div>
+        <div class="fullscreen-editor__header-right">
+          <span class="fullscreen-editor__word-count"></span>
+          <button class="btn btn--ghost fullscreen-editor__close">${icon('x', 'size="20"')} 关闭</button>
+        </div>
       </div>
-      <textarea class="fullscreen-editor__textarea">${note.content || ''}</textarea>
+      <div class="fullscreen-editor__body">
+        <div class="fullscreen-editor__toolbar">
+          <button class="btn btn--ghost btn--xs" data-fmt="bold" title="加粗 Ctrl+B">${icon('bold')}</button>
+          <button class="btn btn--ghost btn--xs" data-fmt="italic" title="斜体 Ctrl+I">${icon('italic')}</button>
+          <button class="btn btn--ghost btn--xs" data-fmt="strikethrough" title="删除线">${icon('strikethrough')}</button>
+          <span class="fullscreen-editor__toolbar-divider"></span>
+          <button class="btn btn--ghost btn--xs" data-fmt="heading" title="标题">${icon('heading')}</button>
+          <button class="btn btn--ghost btn--xs" data-fmt="code" title="代码">${icon('code')}</button>
+          <button class="btn btn--ghost btn--xs" data-fmt="link" title="链接">${icon('link')}</button>
+          <span class="fullscreen-editor__toolbar-divider"></span>
+          <button class="btn btn--ghost btn--xs" data-fmt="list" title="列表">${icon('list')}</button>
+          <button class="btn btn--ghost btn--xs" data-fmt="quote" title="引用">${icon('quote')}</button>
+          <span class="fullscreen-editor__toolbar-divider"></span>
+          <button class="btn btn--ghost btn--xs" data-fmt="undo" title="撤销 Ctrl+Z">${icon('undo-2')}</button>
+          <button class="btn btn--ghost btn--xs" data-fmt="redo" title="重做 Ctrl+Y">${icon('redo-2')}</button>
+        </div>
+        <div class="fullscreen-editor__panes">
+          <textarea class="fullscreen-editor__textarea" placeholder="在此输入内容...">${note.content || ''}</textarea>
+          <div class="fullscreen-editor__preview" style="display:none"></div>
+        </div>
+      </div>
+      <div class="fullscreen-editor__statusbar">
+        <span class="fullscreen-editor__status-text">行 1, 列 1</span>
+        <span class="fullscreen-editor__save-hint">Ctrl+S 保存 · Esc 关闭</span>
+      </div>
     `;
     document.body.appendChild(editor);
     initIcons();
 
+    const content = note.content || '';
+    const hasMarkdown = /[#*`\[\]>\-_]/.test(content);
+    let currentMode: 'plain' | 'markdown' = hasMarkdown ? 'markdown' : 'plain';
+    let undoStack: string[] = [content];
+    let redoStack: string[] = [];
+    let undoLock = false;
+
     const textarea = editor.querySelector('.fullscreen-editor__textarea') as HTMLTextAreaElement;
-    textarea.focus();
+    const preview = editor.querySelector('.fullscreen-editor__preview') as HTMLElement;
+    const wordCount = editor.querySelector('.fullscreen-editor__word-count') as HTMLElement;
+    const statusText = editor.querySelector('.fullscreen-editor__status-text') as HTMLElement;
+    const modeBtns = editor.querySelectorAll('.fullscreen-editor__mode-btn');
+    const toolbarBtns = editor.querySelectorAll('[data-fmt]');
+
+    // Auto-switch to markdown mode if content looks like markdown
+    if (currentMode === 'markdown') {
+      modeBtns.forEach(b => b.classList.remove('fullscreen-editor__mode-btn--active'));
+      (document.querySelector('.fullscreen-editor__mode-btn[data-mode="markdown"]') as HTMLElement)?.classList.add('fullscreen-editor__mode-btn--active');
+      preview.style.display = 'block';
+      textarea.style.width = '50%';
+      editor.classList.add('fullscreen-editor--split');
+      updatePreview();
+    }
+
+    function updateWordCount() {
+      const text = textarea.value;
+      const chars = text.length;
+      const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+      wordCount.textContent = `${chars} 字符 · ${words} 词`;
+    }
+
+    function updateStatusBar() {
+      const text = textarea.value;
+      const lines = text.substring(0, textarea.selectionStart).split('\n');
+      const line = lines.length;
+      const col = lines[lines.length - 1].length + 1;
+      statusText.textContent = `行 ${line}, 列 ${col}`;
+    }
+
+    function updatePreview() {
+      if (currentMode === 'markdown') {
+        preview.innerHTML = utils.renderMarkdown(textarea.value);
+      }
+    }
+
+    function pushUndo(val: string) {
+      if (undoLock) return;
+      undoStack.push(val);
+      if (undoStack.length > 100) undoStack.shift();
+      redoStack = [];
+    }
+
+    function wrapSelection(prefix: string, suffix: string = '') {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const selected = text.substring(start, end);
+      const replacement = prefix + (selected || 'text') + (suffix || prefix);
+      textarea.setRangeText(replacement, start, end, 'end');
+      pushUndo(text);
+      textarea.focus();
+      updateWordCount();
+      updateStatusBar();
+      updatePreview();
+    }
+
+    function addPrefixLine(prefix: string) {
+      const start = textarea.selectionStart;
+      const text = textarea.value;
+      const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+      textarea.setRangeText(prefix, lineStart, lineStart, 'end');
+      pushUndo(text);
+      textarea.focus();
+      updateWordCount();
+      updateStatusBar();
+      updatePreview();
+    }
+
+    function handleTab(e: KeyboardEvent) {
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      // If text selected, indent all lines in selection
+      if (start !== end) {
+        const lines = text.substring(start, end).split('\n');
+        const indented = lines.map((l, i) => i === 0 ? '  ' + l : l).join('\n');
+        textarea.setRangeText(indented, start, end, 'end');
+      } else {
+        textarea.setRangeText('  ', start, start, 'end');
+      }
+      pushUndo(text);
+      updateWordCount();
+      updateStatusBar();
+      updatePreview();
+    }
+
+    function handleShiftTab(e: KeyboardEvent) {
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const text = textarea.value;
+      const before = text.substring(0, start);
+      if (before.endsWith('  ')) {
+        textarea.value = before.slice(0, -2) + text.substring(start);
+        textarea.selectionStart = textarea.selectionEnd = start - 2;
+      }
+      pushUndo(text);
+      updateWordCount();
+      updateStatusBar();
+      updatePreview();
+    }
+
+    function formatAction(action: string) {
+      switch (action) {
+        case 'bold': wrapSelection('**'); break;
+        case 'italic': wrapSelection('*'); break;
+        case 'strikethrough': wrapSelection('~~'); break;
+        case 'heading': addPrefixLine('## '); break;
+        case 'code': wrapSelection('`', '`'); break;
+        case 'link':
+          const url = prompt('输入链接URL:', 'https://');
+          if (url) wrapSelection('[', `](${url})`);
+          break;
+        case 'list': addPrefixLine('- '); break;
+        case 'quote': addPrefixLine('> '); break;
+        case 'undo':
+          if (undoStack.length > 1) {
+            undoLock = true;
+            redoStack.push(undoStack.pop()!);
+            textarea.value = undoStack[undoStack.length - 1];
+            undoLock = false;
+          }
+          break;
+        case 'redo':
+          if (redoStack.length > 0) {
+            undoLock = true;
+            const val = redoStack.pop()!;
+            undoStack.push(val);
+            textarea.value = val;
+            undoLock = false;
+          }
+          break;
+      }
+      updateWordCount();
+      updateStatusBar();
+      updatePreview();
+    }
 
     const close = async () => {
       const newContent = textarea.value;
@@ -1600,10 +1837,75 @@ export const boardPage = {
       await boardPage.render();
     };
 
-    editor.querySelector('.fullscreen-editor__close')?.addEventListener('click', close);
-    editor.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') close();
+    // Mode switching
+    modeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        modeBtns.forEach(b => b.classList.remove('fullscreen-editor__mode-btn--active'));
+        btn.classList.add('fullscreen-editor__mode-btn--active');
+        currentMode = (btn as HTMLElement).dataset.mode as 'plain' | 'markdown';
+        if (currentMode === 'markdown') {
+          preview.style.display = 'block';
+          textarea.style.width = '50%';
+          editor.classList.add('fullscreen-editor--split');
+          updatePreview();
+        } else {
+          preview.style.display = 'none';
+          textarea.style.width = '100%';
+          editor.classList.remove('fullscreen-editor--split');
+        }
+        textarea.focus();
+      });
     });
+
+    // Toolbar actions
+    toolbarBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = (btn as HTMLElement).dataset.fmt!;
+        formatAction(action);
+        textarea.focus();
+      });
+    });
+
+    // Textarea events
+    textarea.addEventListener('input', () => {
+      updateWordCount();
+      updateStatusBar();
+      updatePreview();
+    });
+
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab' && !e.shiftKey) {
+        handleTab(e);
+      } else if (e.key === 'Tab' && e.shiftKey) {
+        handleShiftTab(e);
+      } else if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        close();
+      } else if (e.key === 'Escape') {
+        close();
+      } else if (e.key === 'b' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        formatAction('bold');
+      } else if (e.key === 'i' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        formatAction('italic');
+      } else if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault();
+        formatAction('undo');
+      } else if ((e.key === 'y' || (e.key === 'z' && e.shiftKey)) && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        formatAction('redo');
+      }
+    });
+
+    textarea.addEventListener('select', updateStatusBar);
+    textarea.addEventListener('click', updateStatusBar);
+    textarea.addEventListener('keyup', updateStatusBar);
+
+    editor.querySelector('.fullscreen-editor__close')?.addEventListener('click', close);
+    textarea.focus();
+    updateWordCount();
+    updateStatusBar();
   },
 
   showMenu(noteId: string, e: MouseEvent): void {
@@ -1982,6 +2284,21 @@ function onDragMove(e: PointerEvent) {
   if (!d.moved) {
     if (Math.abs(dx) < DRAG_TH && Math.abs(dy) < DRAG_TH) return;
     d.moved = true;
+    if (d.isSubtaskDrag) {
+      const ghost = document.createElement('div');
+      ghost.className = 'note note--preview note--dragging';
+      ghost.id = 'subtask-drag-ghost';
+      ghost.style.position = 'fixed';
+      ghost.style.width = '180px';
+      ghost.style.pointerEvents = 'none';
+      ghost.style.zIndex = '999999';
+      ghost.style.cursor = 'grabbing';
+      ghost.innerHTML = `<div class="note__preview-header"><div class="note__drag-handle" style="opacity:0.6">${icon('grip-vertical')}</div><span class="note__title">${utils.escapeHtml(d.subtaskData?.title || '')}</span></div>`;
+      document.body.appendChild(ghost);
+      initIcons();
+      boardPage.showDye();
+      return;
+    }
     if (d.isMultiDrag) {
       for (const sid of selectedIds) {
         document.querySelector(`.note[data-id="${sid}"]`)?.classList.add('note--dragging');
@@ -1998,6 +2315,16 @@ function onDragMove(e: PointerEvent) {
     boardPage.showDye();
   }
 
+  if (d.isSubtaskDrag) {
+    const ghost = document.getElementById('subtask-drag-ghost') as HTMLElement;
+    if (ghost) {
+      ghost.style.left = (e.clientX - 90) + 'px';
+      ghost.style.top = (e.clientY - 20) + 'px';
+    }
+    boardPage.checkDye(e.clientX, e.clientY);
+    boardPage.checkDock(e.clientX, e.clientY);
+    return;
+  }
   if (d.isMultiDrag) {
     // Move all selected notes by the same delta (in canvas coordinate space)
     const ddx = dx / canvasScale;
@@ -2042,8 +2369,41 @@ async function onDragUp(e: PointerEvent) {
   document.removeEventListener('pointermove', onDragMove);
   document.removeEventListener('pointerup', onDragUp);
   if (!drag) return;
-  const { noteId, moved, origGX, origGY, isMultiDrag, origPositions } = drag;
+  const { noteId, moved, origGX, origGY, isMultiDrag, origPositions, isSubtaskDrag, subtaskData } = drag;
   const noteEl = document.querySelector(`.note[data-id="${noteId}"]`);
+
+  if (isSubtaskDrag) {
+    document.getElementById('subtask-drag-ghost')?.remove();
+    boardPage.hideDye();
+    const dockAction = boardPage.getDock(e.clientX, e.clientY);
+    if (!dockAction && moved) {
+      const pos = screenToCanvas(e.clientX, e.clientY);
+      const snapX = utils.snapToGrid(Math.max(0, pos.x - 100), GRID);
+      const snapY = utils.snapToGrid(Math.max(0, pos.y - 40), GRID);
+      const allTasks = store.get<TaskItem[]>('allTasks') ?? [];
+      const parentTask = allTasks.find(t => t.id === subtaskData?.parentId);
+      const newNote = await taskApi.create({
+        type: 'note',
+        sub_type: 'note',
+        title: subtaskData?.title || '新便签',
+        content: subtaskData?.content || '',
+        category_id: parentTask?.category_id ?? 'cat_default',
+        priority: parentTask?.priority ?? 0,
+        sort_order: 0,
+        status: 'active',
+        collapsed: false,
+        group_id: parentTask?.group_id ?? null,
+        board_tab: parentTask?.board_tab ?? (currentBoardTab || null),
+        grid_x: snapX,
+        grid_y: snapY,
+      });
+      history.push({ type: 'create', taskId: newNote.id, before: null, after: newNote });
+      toast.success(`已将"${subtaskData?.title}"拖出为新便签`);
+    }
+    drag = null;
+    await boardPage.render();
+    return;
+  }
 
   if (moved) {
     wasDragged = true;

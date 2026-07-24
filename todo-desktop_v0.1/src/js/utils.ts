@@ -90,4 +90,45 @@ export const utils = {
   snapToGrid(value: number, step: number): number {
     return Math.round(value / step) * step;
   },
+
+  renderMarkdown(text: string): string {
+    let html = utils.escapeHtml(text);
+    // Code blocks (```)
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    // Headers
+    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    // Blockquotes
+    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+    // Bold
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Italic
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Strikethrough
+    html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
+    // Unordered lists
+    html = html.replace(/^[\*\-] (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+    // Ordered lists
+    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    // Links
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // Horizontal rules
+    html = html.replace(/^---$/gm, '<hr>');
+    // Paragraphs (double newlines)
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = '<p>' + html + '</p>';
+    // Clean up nested paragraphs from headers/lists
+    html = html.replace(/<\/p><(h[1-3]|ul|ol|li|pre|blockquote|hr)/g, '<$1');
+    html = html.replace(/(h[1-3]|ul|ol|li|pre|blockquote|hr)><p>/g, '$1>');
+    html = html.replace(/<\/(h[1-3]|ul|ol|li|pre|blockquote|hr)><\/p>/g, '</$1>');
+    html = html.replace(/<\/p><\/(h[1-3]|ul|ol|li|pre|blockquote|hr)/g, '</$1');
+    html = html.replace(/<p><\/(h[1-3]|ul|ol|li|pre|blockquote|hr)/g, '<$1');
+    // Line breaks
+    html = html.replace(/\n/g, '<br>');
+    return html;
+  },
 };

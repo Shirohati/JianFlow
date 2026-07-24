@@ -57,7 +57,7 @@ main (集线器)
 
 **最后同步**：2026-07-24
 **当前版本**：v0.1.1
-**待办工作**：即将展开
+**待办工作**：已完成三项功能：子任务拖出新便签、contenteditable 输入优化、全屏编辑器升级
 
 ---
 
@@ -95,6 +95,7 @@ main (集线器)
 | 日期 | 对话摘要 | 涉及文件 | 版本 |
 |------|----------|----------|------|
 | 2026-07-24 | 初始化 feat/v0.1 分支：归档 v0.2、重置工作基线、创建开发规范 | .gitattributes, .gitignore, DEVELOPMENT.md, GIT-WORKFLOW.md | v0.1 |
+| 2026-07-24 | ①子任务拖拽出新便签(继承父便签属性) ②修复contenteditable光标跳尾 ③全屏编辑器升级(双模式/Markdown预览/Tab缩进/工具栏) | `src/js/pages/board.ts`, `src/js/utils.ts`, `src/styles/pages.css` | v0.1.1 |
 
 ---
 
