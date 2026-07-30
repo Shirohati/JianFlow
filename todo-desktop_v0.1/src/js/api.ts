@@ -119,6 +119,11 @@ export interface AppSettings {
   move_uncompleted: boolean;
   board_bg_style: string;
   note_spacing: number;
+  feedback_sound_enabled: boolean;
+  feedback_confetti_enabled: boolean;
+  feedback_task_sound_enabled: boolean;
+  feedback_task_confetti_enabled: boolean;
+  feedback_milestone_interval: number;
 }
 
 export const taskApi = {

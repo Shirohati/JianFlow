@@ -4,7 +4,9 @@ import { taskApi, categoryApi, dailyLogApi, settingsApi, timeRecordApi } from '.
 import { utils } from '../utils';
 import { initIcons } from '../icons';
 import { toast } from '../components/toast';
-import type { TaskItem, Category } from '../api';
+import type { TaskItem, Category, AppSettings } from '../api';
+import { playTaskPop } from '../audio';
+import { triggerBurst } from '../confetti';
 
 function icon(name: string, attrs: string = ''): string {
   return `<i data-lucide="${name}" ${attrs}></i>`;
@@ -1513,6 +1515,7 @@ export const homePage = {
     const newStatus = task.todo_status === 'completed' ? 'pending' : 'completed';
     await taskApi.update(id, { todo_status: newStatus });
     toast.success(newStatus === 'completed' ? '已完成' : '已恢复待办');
+    if (newStatus === 'completed') homePage.triggerTaskFeedback(id);
     await homePage.render();
   },
 
@@ -1523,7 +1526,19 @@ export const homePage = {
     const newStatus = task.todo_status === 'completed' ? 'pending' : 'completed';
     await taskApi.update(id, { todo_status: newStatus });
     toast.success(newStatus === 'completed' ? '已完成' : '已恢复待办');
+    if (newStatus === 'completed') homePage.triggerTaskFeedback(id);
     await homePage.render();
+  },
+
+  triggerTaskFeedback(id: string): void {
+    const s = store.get<AppSettings>('settings');
+    if (!s?.feedback_task_sound_enabled && !s?.feedback_task_confetti_enabled) return;
+    const btn = document.querySelector(`.task-toggle[data-id="${id}"]`) as HTMLElement | null;
+    const rect = btn?.getBoundingClientRect();
+    const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+    if (s?.feedback_task_sound_enabled) playTaskPop();
+    if (s?.feedback_task_confetti_enabled) triggerBurst(x, y);
   },
 
   async deleteTodo(id: string): Promise<void> {

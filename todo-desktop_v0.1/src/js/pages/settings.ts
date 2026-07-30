@@ -100,6 +100,43 @@ export const settingsPage = {
       </div>
 
       <div class="settings-section">
+        <h3 class="settings-section-title">${icon('party-popper', 'size="14"')} 反馈</h3>
+        <div class="settings-row">
+          <span class="settings-label">🍅 番茄钟完成音效</span>
+          <label class="settings-toggle">
+            <input type="checkbox" data-key="feedback_sound_enabled" ${settings.feedback_sound_enabled ? 'checked' : ''} />
+            <span class="settings-toggle-slider"></span>
+          </label>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">🎊 番茄钟完成撒花</span>
+          <label class="settings-toggle">
+            <input type="checkbox" data-key="feedback_confetti_enabled" ${settings.feedback_confetti_enabled ? 'checked' : ''} />
+            <span class="settings-toggle-slider"></span>
+          </label>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">✅ 待办勾配音效</span>
+          <label class="settings-toggle">
+            <input type="checkbox" data-key="feedback_task_sound_enabled" ${settings.feedback_task_sound_enabled ? 'checked' : ''} />
+            <span class="settings-toggle-slider"></span>
+          </label>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">✨ 待办勾配动画</span>
+          <label class="settings-toggle">
+            <input type="checkbox" data-key="feedback_task_confetti_enabled" ${settings.feedback_task_confetti_enabled ? 'checked' : ''} />
+            <span class="settings-toggle-slider"></span>
+          </label>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">📏 正向里程碑间隔 (分钟)</span>
+          <input type="number" class="input input--sm" data-key="feedback_milestone_interval" value="${settings.feedback_milestone_interval}" min="0" max="120" style="width:72px" />
+          <span style="font-size:var(--text-xs);color:var(--text-lighter);margin-left:var(--space-1)">0=关闭</span>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h3 class="settings-section-title">${icon('tag', 'size="14"')} 分类管理</h3>
         <div class="settings-categories" id="settingsCategories">
           ${categories.map(c => `
@@ -321,6 +358,15 @@ export const settingsPage = {
       el.addEventListener('change', async (e) => {
         const key = (el as HTMLElement).dataset.key!;
         const value = (e.target as HTMLInputElement).value;
+        await settingsApi.update({ [key]: value } as Partial<AppSettings>);
+        toast.success('设置已保存');
+      });
+    });
+
+    container.querySelectorAll('input[data-key="feedback_milestone_interval"]').forEach(el => {
+      el.addEventListener('change', async (e) => {
+        const key = (el as HTMLElement).dataset.key!;
+        const value = parseInt((e.target as HTMLInputElement).value) || 25;
         await settingsApi.update({ [key]: value } as Partial<AppSettings>);
         toast.success('设置已保存');
       });

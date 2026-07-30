@@ -183,6 +183,7 @@ pub struct Connection {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(default)]
 pub struct AppSettings {
     pub theme: String,
     pub master_plan: String,
@@ -199,6 +200,11 @@ pub struct AppSettings {
     pub move_uncompleted: bool,
     pub board_bg_style: String,
     pub note_spacing: i32,
+    pub feedback_sound_enabled: bool,
+    pub feedback_confetti_enabled: bool,
+    pub feedback_task_sound_enabled: bool,
+    pub feedback_task_confetti_enabled: bool,
+    pub feedback_milestone_interval: i32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -214,6 +220,33 @@ pub struct AppData {
     pub settings: AppSettings,
     pub daily_logs: HashMap<String, String>,
     pub version: String,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            theme: "warm".into(),
+            master_plan: String::new(),
+            master_reflection: String::new(),
+            quotes: "[]".into(),
+            quote_mode: "random".into(),
+            quote_interval: "30".into(),
+            pomodoro_show_todos: true,
+            pomodoro_show_plan: false,
+            pomodoro_show_countdown: true,
+            bg_home: String::new(),
+            bg_pomodoro: String::new(),
+            startup_minimized: false,
+            move_uncompleted: false,
+            board_bg_style: "cork".into(),
+            note_spacing: 16,
+            feedback_sound_enabled: true,
+            feedback_confetti_enabled: true,
+            feedback_task_sound_enabled: true,
+            feedback_task_confetti_enabled: true,
+            feedback_milestone_interval: 25,
+        }
+    }
 }
 
 impl Default for AppData {
@@ -258,6 +291,11 @@ impl Default for AppData {
                 move_uncompleted: false,
                 board_bg_style: "cork".into(),
                 note_spacing: 16,
+                feedback_sound_enabled: true,
+                feedback_confetti_enabled: true,
+                feedback_task_sound_enabled: true,
+                feedback_task_confetti_enabled: true,
+                feedback_milestone_interval: 25,
             },
             daily_logs: HashMap::new(),
             version: "0.1.1".into(),

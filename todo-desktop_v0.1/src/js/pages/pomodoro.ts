@@ -4,6 +4,8 @@ import { utils } from '../utils';
 import { initIcons } from '../icons';
 import { toast } from '../components/toast';
 import type { PomodoroPreset, TimeType, Goal, Countdown, AppSettings, TimeRecord } from '../api';
+import { playComplete, playMilestone } from '../audio';
+import { triggerConfetti, triggerScreenFlash } from '../confetti';
 
 function icon(name: string, attrs: string = ''): string {
   return `<i data-lucide="${name}" ${attrs}></i>`;
@@ -297,6 +299,8 @@ export const pomodoroPage = {
       const now = new Date();
       const endTime = now.toTimeString().slice(0, 5);
 
+      const oldTotal = pomodoroPage.getTodayMinutes();
+
       const record: Partial<TimeRecord> = {
         id: 'tr_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7),
         date: utils.getTodayStr(),
@@ -316,6 +320,18 @@ export const pomodoroPage = {
       const todayRecords = await timeRecordApi.list(utils.getTodayStr());
       store.set('timeRecords', todayRecords);
       pomodoroPage.loadTodayRecords();
+
+      const newTotal = pomodoroPage.getTodayMinutes();
+      const s = store.get<AppSettings>('settings');
+      const goals = store.get<Goal[]>('goals');
+      const dailyGoal = goals?.find(g => g.goal_type === 'daily');
+      if (dailyGoal && s && newTotal >= dailyGoal.target_minutes && oldTotal < dailyGoal.target_minutes) {
+        if (s.feedback_sound_enabled) playComplete();
+        if (s.feedback_confetti_enabled) {
+          triggerConfetti(120);
+          triggerScreenFlash();
+        }
+      }
     } else if (wasRunning) {
       toast.info('时长不足1分钟，未记录');
     }
@@ -359,9 +375,21 @@ export const pomodoroPage = {
         if (pomoState.elapsedSeconds >= totalSec) {
           const typeName = pomoState.timeType;
           pomodoroPage.stopTick();
+          const s = store.get<AppSettings>('settings');
+          if (s?.feedback_sound_enabled) playComplete();
+          if (s?.feedback_confetti_enabled) triggerConfetti();
           pomodoroPage.stop();
           toast.success(`${typeName ?? '番茄钟'} 时间到！`);
           return;
+        }
+      }
+
+      if (pomoState.mode === 'stopwatch' && pomoState.elapsedSeconds > 0) {
+        const s = store.get<AppSettings>('settings');
+        const interval = s?.feedback_milestone_interval ?? 25;
+        if (interval > 0 && pomoState.elapsedSeconds % (interval * 60) === 0) {
+          if (s?.feedback_sound_enabled) playMilestone();
+          if (s?.feedback_confetti_enabled) triggerConfetti(50);
         }
       }
 

@@ -816,6 +816,21 @@ impl Database {
         if let Some(v) = updates.get("note_spacing").and_then(|v| v.as_i64()) {
             data.settings.note_spacing = v as i32;
         }
+        if let Some(v) = updates.get("feedback_sound_enabled").and_then(|v| v.as_bool()) {
+            data.settings.feedback_sound_enabled = v;
+        }
+        if let Some(v) = updates.get("feedback_confetti_enabled").and_then(|v| v.as_bool()) {
+            data.settings.feedback_confetti_enabled = v;
+        }
+        if let Some(v) = updates.get("feedback_task_sound_enabled").and_then(|v| v.as_bool()) {
+            data.settings.feedback_task_sound_enabled = v;
+        }
+        if let Some(v) = updates.get("feedback_task_confetti_enabled").and_then(|v| v.as_bool()) {
+            data.settings.feedback_task_confetti_enabled = v;
+        }
+        if let Some(v) = updates.get("feedback_milestone_interval").and_then(|v| v.as_i64()) {
+            data.settings.feedback_milestone_interval = v as i32;
+        }
         let result = data.settings.clone();
         drop(data);
         self.save();

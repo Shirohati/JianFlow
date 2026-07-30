@@ -4,7 +4,9 @@ import { utils } from '../utils';
 import { initIcons } from '../icons';
 import { history } from '../history';
 import { toast } from '../components/toast';
-import type { TaskItem, Category, Connection } from '../api';
+import type { TaskItem, Category, Connection, AppSettings } from '../api';
+import { playTaskPop } from '../audio';
+import { triggerBurst } from '../confetti';
 
 function icon(name: string, attrs: string = ''): string {
   return `<i data-lucide="${name}" ${attrs}></i>`;
@@ -1135,7 +1137,19 @@ export const boardPage = {
     const ns = t.todo_status === 'completed' ? 'pending' : 'completed';
     history.push({ type: 'update', taskId: id, before: { todo_status: t.todo_status }, after: { todo_status: ns } });
     await taskApi.update(id, { todo_status: ns });
+    if (ns === 'completed') boardPage.triggerSubtaskFeedback(id);
     boardPage.updateSubtaskLocal(id, ns);
+  },
+
+  triggerSubtaskFeedback(id: string): void {
+    const s = store.get<AppSettings>('settings');
+    if (!s?.feedback_task_sound_enabled && !s?.feedback_task_confetti_enabled) return;
+    const el = document.querySelector(`.note__subtask-item[data-id="${id}"]`);
+    const rect = el?.getBoundingClientRect();
+    const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+    if (s?.feedback_task_sound_enabled) playTaskPop();
+    if (s?.feedback_task_confetti_enabled) triggerBurst(x, y);
   },
 
   async quickSub(id: string, action: string): Promise<void> {
