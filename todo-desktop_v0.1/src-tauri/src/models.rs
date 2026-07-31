@@ -36,6 +36,7 @@ pub struct TaskCreateInput {
     pub node_mode: Option<bool>,
     pub schedule_start: Option<String>,
     pub schedule_end: Option<String>,
+    pub is_secondary: Option<bool>,
 }
 
 impl TaskCreateInput {
@@ -74,6 +75,7 @@ impl TaskCreateInput {
             node_mode: self.node_mode,
             schedule_start: self.schedule_start,
             schedule_end: self.schedule_end,
+            is_secondary: self.is_secondary.unwrap_or(false),
             created_at: String::new(),
             updated_at: String::new(),
         }
@@ -115,6 +117,8 @@ pub struct TaskItem {
     pub node_mode: Option<bool>,
     pub schedule_start: Option<String>,
     pub schedule_end: Option<String>,
+    #[serde(default)]
+    pub is_secondary: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -205,6 +209,7 @@ pub struct AppSettings {
     pub feedback_task_sound_enabled: bool,
     pub feedback_task_confetti_enabled: bool,
     pub feedback_milestone_interval: i32,
+    pub show_secondary_todos: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -245,6 +250,7 @@ impl Default for AppSettings {
             feedback_task_sound_enabled: true,
             feedback_task_confetti_enabled: true,
             feedback_milestone_interval: 25,
+            show_secondary_todos: true,
         }
     }
 }
@@ -296,6 +302,7 @@ impl Default for AppData {
                 feedback_task_sound_enabled: true,
                 feedback_task_confetti_enabled: true,
                 feedback_milestone_interval: 25,
+                show_secondary_todos: true,
             },
             daily_logs: HashMap::new(),
             version: "0.1.1".into(),

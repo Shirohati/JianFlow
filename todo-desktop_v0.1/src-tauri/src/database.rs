@@ -210,6 +210,9 @@ impl Database {
         if let Some(v) = updates.get("schedule_end") {
             task.schedule_end = v.as_str().map(|s| s.to_string());
         }
+        if let Some(v) = updates.get("is_secondary").and_then(|v| v.as_bool()) {
+            task.is_secondary = v;
+        }
         let result = task.clone();
         drop(data);
         self.save();
@@ -366,6 +369,7 @@ impl Database {
                     node_mode: None,
                     schedule_start: None,
                     schedule_end: None,
+                    is_secondary: task.is_secondary,
                     created_at: now.clone(),
                     updated_at: now.clone(),
                 };

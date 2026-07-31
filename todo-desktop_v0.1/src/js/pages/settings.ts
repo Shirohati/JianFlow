@@ -100,6 +100,17 @@ export const settingsPage = {
       </div>
 
       <div class="settings-section">
+        <h3 class="settings-section-title">${icon('list-todo', 'size="14"')} 待办</h3>
+        <div class="settings-row">
+          <span class="settings-label">显示次要待办区域</span>
+          <label class="settings-toggle">
+            <input type="checkbox" data-key="show_secondary_todos" ${settings.show_secondary_todos ? 'checked' : ''} />
+            <span class="settings-toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h3 class="settings-section-title">${icon('party-popper', 'size="14"')} 反馈</h3>
         <div class="settings-row">
           <span class="settings-label">🍅 番茄钟完成音效</span>

@@ -34,6 +34,7 @@ export interface TaskItem {
   node_mode: boolean | null;
   schedule_start: string | null;
   schedule_end: string | null;
+  is_secondary: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -124,6 +125,7 @@ export interface AppSettings {
   feedback_task_sound_enabled: boolean;
   feedback_task_confetti_enabled: boolean;
   feedback_milestone_interval: number;
+  show_secondary_todos: boolean;
 }
 
 export const taskApi = {

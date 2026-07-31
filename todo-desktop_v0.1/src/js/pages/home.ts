@@ -38,6 +38,11 @@ let homeDrag: HomeDragInfo | null = null;
 let homeResizeInfo: { noteId: string; startX: number; startY: number; startW: number; startH: number; noteEl: HTMLElement; bodyEl: HTMLElement | null; rafId: number; pendingW: number; pendingH: number } | null = null;
 let homeOpenIds = new Set<string>();
 let homeZCounter = 50;
+let homeAddSecondary = false;
+
+function isSecondaryCollapsed(): boolean {
+  return localStorage.getItem('home_secondary_collapsed') === '1';
+}
 
 export const homePage = {
   async init(): Promise<void> {
@@ -88,6 +93,7 @@ export const homePage = {
         todo_status: 'pending',
         parent_id: t.parent_id,
         recurrence: t.recurrence,
+        is_secondary: t.is_secondary,
       });
       migrated++;
     }
@@ -127,6 +133,10 @@ export const homePage = {
 
       <div class="home-add-area">
         <input class="input home-add-input" placeholder="添加新待办..." />
+        <div class="task-sec-switch" title="选择添加区域">
+          <button class="task-sec-switch__btn active" data-sec="0">主要</button>
+          <button class="task-sec-switch__btn" data-sec="1">次要</button>
+        </div>
         <select class="input input--sm task-rec-select">
           <option value="">不重复</option>
           <option value="daily">每天</option>
@@ -179,6 +189,17 @@ export const homePage = {
 
     const addInput = container.querySelector('.home-add-input') as HTMLInputElement | null;
     const addBtn = container.querySelector('.home-add-btn');
+    const updateAddMode = () => {
+      const sw = container.querySelector('.task-sec-switch');
+      sw?.querySelectorAll('.task-sec-switch__btn').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.sec === (homeAddSecondary ? '1' : '0')));
+      if (addInput) addInput.placeholder = homeAddSecondary ? '添加次要待办...' : '添加新待办...';
+    };
+    container.querySelectorAll('.task-sec-switch__btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        homeAddSecondary = (btn as HTMLElement).dataset.sec === '1';
+        updateAddMode();
+      });
+    });
     if (addBtn && addInput) {
       addBtn.addEventListener('click', () => {
         const text = addInput.value.trim();
@@ -198,6 +219,10 @@ export const homePage = {
 
     container.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+      const secBtn = target.closest('.task-sec-btn') as HTMLElement | null;
+      if (secBtn) { homePage.setTodoSecondary(secBtn.dataset.id!, secBtn.dataset.sec === '1'); return; }
+      const secHead = target.closest('[data-action="toggle-secondary"]') as HTMLElement | null;
+      if (secHead) { homePage.toggleSecondarySection(); return; }
       const foldHeader = target.closest('.fold-panel__header') as HTMLElement | null;
       if (foldHeader) { foldHeader.closest('.fold-panel')?.classList.toggle('fold-panel--open'); return; }
       const toggleBtn = target.closest('.task-toggle') as HTMLElement | null;
@@ -290,6 +315,9 @@ export const homePage = {
     homePage.renderTimeline(tasks, allTasks);
     homePage.renderTaskList(tasks, allTasks);
     homePage.renderStats(tasks);
+    const settings = store.get<AppSettings>('settings');
+    const secSwitch = document.querySelector('.task-sec-switch') as HTMLElement | null;
+    if (secSwitch) secSwitch.style.display = settings?.show_secondary_todos === false ? 'none' : '';
     // Load time records for current date
     const timeRecords = await timeRecordApi.list(currentDate);
     store.set('timeRecords', timeRecords);
@@ -689,8 +717,9 @@ export const homePage = {
   },
 
   renderStats(tasks: TaskItem[]): void {
-    const total = tasks.length;
-    const done = tasks.filter(t => t.todo_status === 'completed').length;
+    const primaryTasks = tasks.filter(t => t.sub_type !== 'schedule' && !t.is_secondary);
+    const total = primaryTasks.length;
+    const done = primaryTasks.filter(t => t.todo_status === 'completed').length;
     const doneEl = document.querySelector('.home-stats-done');
     const totalEl = document.querySelector('.home-stats-total');
     if (doneEl) doneEl.textContent = String(done);
@@ -714,16 +743,44 @@ export const homePage = {
     const el = document.querySelector('.home-task-list');
     if (!el) return;
     const categories = store.get<Category[]>('categories') ?? [];
+    const settings = store.get<AppSettings>('settings');
+    const showSecondary = settings?.show_secondary_todos ?? true;
     const todoTasks = tasks.filter(t => t.sub_type !== 'schedule');
     const pending = todoTasks.filter(t => t.todo_status !== 'completed');
     const completed = todoTasks.filter(t => t.todo_status === 'completed');
-    const all = [...pending, ...completed];
-    if (all.length === 0) {
+    const pendingPrimary = pending.filter(t => !t.is_secondary);
+    const pendingSecondary = pending.filter(t => t.is_secondary);
+    const primaryAll = todoTasks.filter(t => !t.is_secondary);
+    const secondaryAll = todoTasks.filter(t => t.is_secondary);
+    const primaryDone = primaryAll.filter(t => t.todo_status === 'completed').length;
+    const secondaryDone = secondaryAll.filter(t => t.todo_status === 'completed').length;
+    if (todoTasks.length === 0) {
       el.innerHTML = `<div class="empty-state"><div class="empty-state__icon">${icon('inbox', 'size="48"')}</div><p class="empty-state__text">今天还没有待办，添加一个吧</p></div>`;
       return;
     }
     let html = '';
-    if (pending.length > 0) html += pending.map(t => homePage.renderTaskItem(t, allTasks, categories)).join('');
+    html += `<div class="home-todo-sec home-todo-sec--primary">
+      <div class="home-todo-sec__head">
+        <span class="home-todo-sec__dot"></span>
+        <span class="home-todo-sec__label">主要待办</span>
+        <span class="home-todo-sec__line"></span>
+        <span class="home-todo-sec__count">${primaryDone}/${primaryAll.length}</span>
+      </div>
+      <div class="home-todo-sec__list">${pendingPrimary.length > 0 ? pendingPrimary.map(t => homePage.renderTaskItem(t, allTasks, categories)).join('') : `<div class="home-todo-sec__empty">暂无主要待办</div>`}</div>
+    </div>`;
+    if (showSecondary) {
+      const collapsed = isSecondaryCollapsed();
+      html += `<div class="home-todo-sec home-todo-sec--secondary${collapsed ? ' home-todo-sec--collapsed' : ''}">
+        <button class="home-todo-sec__head home-todo-sec__head--btn" data-action="toggle-secondary" title="展开/折叠">
+          <span class="home-todo-sec__dot"></span>
+          <span class="home-todo-sec__label">次要待办</span>
+          <span class="home-todo-sec__line"></span>
+          <span class="home-todo-sec__count">${secondaryDone}/${secondaryAll.length}</span>
+          ${icon('chevron-down', 'size="14"')}
+        </button>
+        <div class="home-todo-sec__list">${pendingSecondary.length > 0 ? pendingSecondary.map(t => homePage.renderTaskItem(t, allTasks, categories)).join('') : `<div class="home-todo-sec__empty">暂无次要待办</div>`}</div>
+      </div>`;
+    }
     if (completed.length > 0) {
       html += `<div class="home-completed-header">${icon('check-circle-2', 'size="14"')} 已完成 (${completed.length})</div>`;
       html += completed.map(t => homePage.renderTaskItem(t, allTasks, categories)).join('');
@@ -740,6 +797,7 @@ export const homePage = {
     const parentTask = t.parent_id ? allTasks.find(p => p.id === t.parent_id) : null;
     const parentName = parentTask ? parentTask.title : '';
     const hasParent = !!t.parent_id;
+    const isSecondary = !!t.is_secondary;
     const scheduleLabel = t.schedule_start ? `${t.schedule_start}${t.schedule_end ? '-' + t.schedule_end : ''}` : '';
     return `
     <div class="task-item ${isCompleted ? 'task-completed' : ''}" data-id="${t.id}">
@@ -756,6 +814,7 @@ export const homePage = {
       </div>
       ${!hasParent ? `<button class="task-attach-btn" data-id="${t.id}" title="挂靠到便签">${icon('map-pin', 'size="14"')}</button>` : ''}
       ${t.recurrence ? `<span class="task-recurrence" title="重复: ${t.recurrence === 'daily' ? '每天' : t.recurrence === 'weekly' ? '每周' : '每月'}">${t.recurrence === 'daily' ? '🔁每天' : t.recurrence === 'weekly' ? '🔁每周' : '🔁每月'}</span>` : ''}
+      ${isSecondary ? `<button class="task-sec-btn" data-id="${t.id}" data-sec="0" title="升为主要待办">${icon('arrow-up', 'size="14"')}</button>` : `<button class="task-sec-btn" data-id="${t.id}" data-sec="1" title="降为次要待办">${icon('arrow-down', 'size="14"')}</button>`}
       <button class="btn btn--ghost btn--sm task-delete" data-id="${t.id}" title="删除">${icon('trash-2', 'size="14"')}</button>
     </div>`;
   },
@@ -1503,8 +1562,8 @@ export const homePage = {
 
   async addTodo(text: string, recurrence?: string): Promise<void> {
     const currentDate = store.get<string>('currentDate') ?? utils.getTodayStr();
-    await taskApi.create({ type: 'note', sub_type: 'task', title: text, content: '', category_id: 'cat_default', priority: 0, sort_order: 0, status: 'active', collapsed: false, todo_date: currentDate, todo_status: 'pending', recurrence });
-    toast.success('已添加待办');
+    await taskApi.create({ type: 'note', sub_type: 'task', title: text, content: '', category_id: 'cat_default', priority: 0, sort_order: 0, status: 'active', collapsed: false, todo_date: currentDate, todo_status: 'pending', recurrence, is_secondary: homeAddSecondary });
+    toast.success(homeAddSecondary ? '已添加次要待办' : '已添加待办');
     await homePage.render();
   },
 
@@ -1517,6 +1576,19 @@ export const homePage = {
     toast.success(newStatus === 'completed' ? '已完成' : '已恢复待办');
     if (newStatus === 'completed') homePage.triggerTaskFeedback(id);
     await homePage.render();
+  },
+
+  async setTodoSecondary(id: string, isSecondary: boolean): Promise<void> {
+    await taskApi.update(id, { is_secondary: isSecondary });
+    toast.success(isSecondary ? '已降为次要待办' : '已升为主要待办');
+    await homePage.render();
+  },
+
+  toggleSecondarySection(): void {
+    const sec = document.querySelector('.home-todo-sec--secondary');
+    if (!sec) return;
+    const collapsed = sec.classList.toggle('home-todo-sec--collapsed');
+    localStorage.setItem('home_secondary_collapsed', collapsed ? '1' : '0');
   },
 
   async toggleSubtask(id: string): Promise<void> {

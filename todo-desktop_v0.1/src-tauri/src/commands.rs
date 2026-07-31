@@ -315,6 +315,7 @@ fn do_import_legacy(db: &Database, raw: &str) -> Result<String, String> {
                 node_mode: None,
                 schedule_start: None,
                 schedule_end: None,
+                is_secondary: false,
                 created_at,
                 updated_at: String::new(),
             };
