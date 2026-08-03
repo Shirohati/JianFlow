@@ -1,10 +1,12 @@
 import { store } from '../store';
-import { presetApi, timeRecordApi, timeTypeApi, goalApi, countdownApi, settingsApi } from '../api';
+import { presetApi, timeRecordApi, timeTypeApi, goalApi, countdownApi, settingsApi, lockApi, type ForegroundInfo } from '../api';
 import { utils } from '../utils';
 import { initIcons } from '../icons';
 import { toast } from '../components/toast';
 import type { PomodoroPreset, TimeType, Goal, Countdown, AppSettings, TimeRecord } from '../api';
-import { playComplete, playMilestone } from '../audio';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { playComplete, playMilestone, playLockWarn } from '../audio';
 import { triggerConfetti, triggerScreenFlash } from '../confetti';
 
 function icon(name: string, attrs: string = ''): string {
@@ -27,6 +29,252 @@ let pomoState: PomoState | null = null;
 let pomoInterval: number | null = null;
 let quoteIdx = -1;
 let quoteTimer: number | null = null;
+let lockActive = false;
+let lockYielded = false;
+let lockPollTimer: number | null = null;
+let lockWarned = false;
+let lockUnlisten: UnlistenFn | null = null;
+let lockStopUnlisten: UnlistenFn | null = null;
+let lockWarnLabel: HTMLSpanElement | null = null;
+let lockActionCooldownUntil = 0;
+const LOCK_ACTION_COOLDOWN = 600;
+
+interface LockEntry {
+  type: 'app' | 'site' | 'keyword';
+  value: string;
+}
+
+function parseLockEntries(whitelist: string[]): LockEntry[] {
+  const entries: LockEntry[] = [];
+  for (const raw of whitelist) {
+    const v = raw.trim();
+    if (!v) continue;
+    if (/\.exe$/i.test(v)) {
+      entries.push({ type: 'app', value: v });
+    } else if (/\S\.\S/.test(v) || /^https?:\/\//i.test(v)) {
+      entries.push({ type: 'site', value: v });
+    } else {
+      entries.push({ type: 'keyword', value: v });
+    }
+  }
+  return entries;
+}
+
+function siteHost(value: string): string {
+  let host = value.trim().replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].split('#')[0];
+  host = host.replace(/^www\./i, '');
+  return host.toLowerCase();
+}
+
+function buildLockEntriesHTML(): string {
+  const s = store.get<AppSettings>('settings');
+  let whitelist: string[] = [];
+  try { whitelist = JSON.parse(s?.pomodoro_lock_whitelist || '[]'); } catch { whitelist = []; }
+  const entries = parseLockEntries(whitelist);
+  if (entries.length === 0) return '';
+  const buttons = entries.map(e => {
+    if (e.type === 'app') {
+      return `<button class="pomo-lock-entry pomo-lock-entry--app" data-lock-app="${utils.escapeHtml(e.value)}">${icon('app-window', 'size="13"')} ${utils.escapeHtml(e.value.replace(/\.exe$/i, ''))}</button>`;
+    }
+    if (e.type === 'site') {
+      const host = siteHost(e.value);
+      return `<button class="pomo-lock-entry pomo-lock-entry--site" data-lock-site="${utils.escapeHtml(e.value)}">${icon('globe', 'size="13"')} ${utils.escapeHtml(host || e.value)}</button>`;
+    }
+    return `<button class="pomo-lock-entry pomo-lock-entry--kw" data-lock-kw="${utils.escapeHtml(e.value)}">${icon('text', 'size="13"')} ${utils.escapeHtml(e.value)}</button>`;
+  }).join('');
+  return `
+    <div class="pomo-lock-overlay__entries-title">白名单快捷入口</div>
+    <div class="pomo-lock-overlay__entries">${buttons}</div>
+    <div class="pomo-lock-overlay__hint-sub">点击应用/网站/关键词可快捷切换到对应窗口</div>
+  `;
+}
+
+function buildLockOverlay(): HTMLElement {
+  const existing = document.getElementById('pomoLockOverlay');
+  if (existing) return existing;
+  const overlay = document.createElement('div');
+  overlay.id = 'pomoLockOverlay';
+  overlay.className = 'pomo-lock-overlay';
+  overlay.innerHTML = `
+    <div class="pomo-lock-bg" aria-hidden="true">
+      <div class="pomo-lock-bg__orb pomo-lock-bg__orb--a"></div>
+      <div class="pomo-lock-bg__orb pomo-lock-bg__orb--b"></div>
+      <div class="pomo-lock-bg__grid"></div>
+    </div>
+    <div class="pomo-lock-overlay__card">
+      <div class="pomo-lock-overlay__badge">
+        <span class="pomo-lock-overlay__badge-dot"></span>
+        <span id="pomoLockBadgeText">专注守护中</span>
+      </div>
+      <div class="pomo-lock-overlay__icon">${icon('shield', 'size="30"')}</div>
+      <div class="pomo-lock-overlay__title">保持专注</div>
+      <div class="pomo-lock-overlay__timer" id="pomoLockTimer">--:--</div>
+      <div class="pomo-lock-overlay__hint">仅允许白名单应用与指定网站，其余将被拦截</div>
+      <div class="pomo-lock-overlay__alert" id="pomoLockAlert" hidden></div>
+      <div class="pomo-lock-overlay__entries-wrap" id="pomoLockEntries">${buildLockEntriesHTML()}</div>
+      <div class="pomo-lock-overlay__actions">
+        <button class="pomo-lock-overlay__stop" id="pomoLockStop">${icon('power', 'size="14"')} 结束本次专注</button>
+      </div>
+      <div class="pomo-lock-overlay__keys">${icon('keyboard', 'size="12"')} Ctrl+Alt+L 随时结束并解锁</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#pomoLockStop')?.addEventListener('click', () => { void pomodoroPage.stop(); });
+  overlay.querySelectorAll<HTMLButtonElement>('.pomo-lock-entry--app').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const exe = btn.dataset.lockApp ?? '';
+      const ok = await lockApi.activateApp(exe).catch(() => false);
+      if (!ok) toast.info(`未找到 ${exe} 的已打开窗口`);
+    });
+  });
+  overlay.querySelectorAll<HTMLButtonElement>('.pomo-lock-entry--site').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const url = btn.dataset.lockSite ?? '';
+      const full = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+      await openUrl(full).catch(() => toast.warning('打开浏览器失败'));
+    });
+  });
+  overlay.querySelectorAll<HTMLButtonElement>('.pomo-lock-entry--kw').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const kw = btn.dataset.lockKw ?? '';
+      const ok = await lockApi.activateTitle(kw).catch(() => false);
+      if (!ok) toast.info(`未找到标题含「${kw}」的窗口`);
+    });
+  });
+  lockWarnLabel = overlay.querySelector('#pomoLockAlert') as HTMLSpanElement | null;
+  initIcons();
+  return overlay;
+}
+
+const BROWSER_EXES = ['chrome.exe', 'msedge.exe', 'firefox.exe', '360chrome.exe', '360se.exe', 'qqbrowser.exe', 'sogouexplorer.exe', 'brave.exe', 'opera.exe', 'vivaldi.exe', 'centbrowser.exe', 'maxthon.exe', 'world.exe', 'iexplore.exe', 'seamonkey.exe'];
+
+// 必要系统窗口：这些是操作系统的核心交互界面，不应被锁机拦截
+const SYSTEM_EXES = ['explorer.exe', 'taskmgr.exe', 'dwm.exe', 'startmenuexperiencehost.exe', 'shellexperiencehost.exe', 'lockapp.exe', 'applicationframehost.exe', 'searchapp.exe', 'microsoft.ui.xaml.app.exe'];
+const SYSTEM_TITLES = ['program manager', '任务管理器', 'windows 桌面', 'task manager', '开始', 'start'];
+
+function isOwnWindow(info: ForegroundInfo): boolean {
+  const exe = (info.exe || '').trim().toLowerCase();
+  return exe.indexOf('learning_todo') !== -1 || exe.indexOf('笺流') !== -1;
+}
+
+function isSystemWindow(info: ForegroundInfo): boolean {
+  const title = (info.title || '').trim().toLowerCase();
+  const exe = (info.exe || '').trim().toLowerCase();
+  if (SYSTEM_EXES.includes(exe)) return true;
+  return SYSTEM_TITLES.some(t => title.includes(t));
+}
+
+function isForegroundAllowed(info: ForegroundInfo): boolean {
+  const s = store.get<AppSettings>('settings');
+  let whitelist: string[] = [];
+  try { whitelist = JSON.parse(s?.pomodoro_lock_whitelist || '[]'); } catch { whitelist = []; }
+  const title = (info.title || '').trim().toLowerCase();
+  const exe = (info.exe || '').trim().toLowerCase();
+  // 系统窗口（桌面/任务管理器等）始终放行
+  if (isSystemWindow(info)) return true;
+  if (title.length === 0 && exe.length === 0) return false;
+  const entries = parseLockEntries(whitelist);
+  return entries.some(e => {
+    const v = e.value.toLowerCase();
+    if (e.type === 'app') return exe === v;
+    if (e.type === 'site') {
+      // 网站类：进程必须为浏览器，且窗口标题包含站点域名/主机名
+      const isBrowser = BROWSER_EXES.includes(exe) || exe.includes('browser');
+      if (!isBrowser) return false;
+      const host = siteHost(v);
+      if (!host) return false;
+      return title.includes(host) || title.includes(host.replace(/^www\./i, ''));
+    }
+    // 关键词类：标题或进程名包含
+    return (title.length > 0 && title.includes(v)) || (exe.length > 0 && exe.includes(v));
+  });
+}
+
+function checkForeground(info: ForegroundInfo): void {
+  const now = Date.now();
+  // 防抖：切换动作后短暂忽略前台事件，避免 yield/resume 反复抖动
+  if (now < lockActionCooldownUntil) return;
+  // 本应用锁屏窗口自身获得前台：不做任何切换，防止循环闪烁
+  if (isOwnWindow(info)) return;
+
+  const ok = isForegroundAllowed(info);
+  const overlay = document.getElementById('pomoLockOverlay');
+  if (!ok) {
+    // 违规前台：若已让位给白名单应用，立即恢复锁屏
+    if (lockYielded) {
+      lockYielded = false;
+      lockActionCooldownUntil = now + LOCK_ACTION_COOLDOWN;
+      lockApi.resume().catch(() => {});
+      if (overlay) {
+        overlay.classList.remove('pomo-lock-overlay--yielded');
+        const badge = document.getElementById('pomoLockBadgeText');
+        if (badge) badge.textContent = '专注守护中';
+      }
+    }
+    if (lockWarnLabel && lockWarnLabel.hidden && info.title) {
+      lockWarnLabel.textContent = `${info.title} 不在白名单内，已拦截`;
+      lockWarnLabel.hidden = false;
+    }
+    if (!lockWarned) {
+      lockWarned = true;
+      overlay?.classList.add('pomo-lock-overlay--warn');
+      setTimeout(() => overlay?.classList.remove('pomo-lock-overlay--warn'), 1400);
+      const s = store.get<AppSettings>('settings');
+      if (s?.feedback_sound_enabled) playLockWarn();
+    }
+  } else {
+    lockWarned = false;
+    if (lockWarnLabel) lockWarnLabel.hidden = true;
+    // 白名单/系统前台：让位（隐藏锁屏窗口，放行 Alt+Tab）
+    if (!lockYielded) {
+      lockYielded = true;
+      lockActionCooldownUntil = now + LOCK_ACTION_COOLDOWN;
+      lockApi.yield().catch(() => {});
+      if (overlay) {
+        overlay.classList.add('pomo-lock-overlay--yielded');
+        const badge = document.getElementById('pomoLockBadgeText');
+        if (badge) badge.textContent = '已放行白名单应用';
+      }
+    }
+  }
+}
+
+async function pollForeground(): Promise<void> {
+  const info = await lockApi.foreground().catch(() => ({ title: '', exe: '' }));
+  checkForeground(info);
+}
+
+function startLock(): void {
+  if (lockActive) return;
+  lockActive = true;
+  lockWarned = false;
+  lockYielded = false;
+  buildLockOverlay();
+  lockApi.enter().catch(() => {});
+  // 推送式前台监听：Rust 端 SetWinEventHook 在切换前台时实时通知
+  void listen<ForegroundInfo>('pomo://foreground', (e) => {
+    checkForeground(e.payload);
+  }).then(un => { lockUnlisten = un; }).catch(() => {});
+  // 全局快捷键 Ctrl+Alt+L：让位期间随时结束番茄钟
+  void listen('pomo://global-stop', () => {
+    void pomodoroPage.stop();
+  }).then(un => { lockStopUnlisten = un; }).catch(() => {});
+  // 兜底轮询：每 1.5s 检查一次当前前台窗口
+  void pollForeground();
+  lockPollTimer = window.setInterval(() => { void pollForeground(); }, 1500);
+}
+
+function stopLock(): void {
+  lockActive = false;
+  if (lockPollTimer !== null) { clearInterval(lockPollTimer); lockPollTimer = null; }
+  if (lockUnlisten) { lockUnlisten(); lockUnlisten = null; }
+  if (lockStopUnlisten) { lockStopUnlisten(); lockStopUnlisten = null; }
+  document.getElementById('pomoLockOverlay')?.remove();
+  lockWarnLabel = null;
+  // 让位中超时/结束：先恢复窗口再完全解锁
+  if (lockYielded) { lockYielded = false; lockApi.resume().catch(() => {}); }
+  lockApi.exit().catch(() => {});
+}
 
 export const pomodoroPage = {
   async init(): Promise<void> {
@@ -44,6 +292,7 @@ export const pomodoroPage = {
       store.set('timeTypes', timeTypes);
       store.set('goals', goals);
       store.set('countdowns', countdowns);
+      store.set('settings', settings);
       pomodoroPage.render(inner, presets, timeTypes, goals, countdowns, settings);
       pomodoroPage.bindEvents(inner);
       initIcons();
@@ -83,6 +332,7 @@ export const pomodoroPage = {
     store.set('timeTypes', timeTypes);
     store.set('goals', goals);
     store.set('countdowns', countdowns);
+    store.set('settings', settings);
 
     pomodoroPage.render(inner, presets, timeTypes, goals, countdowns, settings);
     pomodoroPage.bindEvents(inner);
@@ -157,6 +407,17 @@ export const pomodoroPage = {
             </div>
           </div>
 
+          <div class="pomo-lock-card">
+            <div class="settings-row" style="justify-content:space-between">
+              <span class="settings-label">开启专注锁机</span>
+              <label class="settings-toggle">
+                <input type="checkbox" data-key="pomodoro_lock_enabled" ${settings.pomodoro_lock_enabled ? 'checked' : ''} />
+                <span class="settings-toggle-slider"></span>
+              </label>
+            </div>
+            <div class="pomo-lock-card__hint">运行中锁定屏幕，仅白名单应用/网站可用；白名单在设置页配置</div>
+          </div>
+
           <div class="pomo-quote-card" id="pomoQuoteCard" style="display:none">
             <div class="pomo-quote-text" id="pomoQuoteText"></div>
           </div>
@@ -212,6 +473,14 @@ export const pomodoroPage = {
     document.getElementById('pomoPause')?.addEventListener('click', () => pomodoroPage.togglePause());
     document.getElementById('pomoStop')?.addEventListener('click', () => pomodoroPage.stop());
 
+    container.querySelectorAll('.pomo-lock-card .settings-toggle input').forEach(el => {
+      el.addEventListener('change', async (e) => {
+        const value = (e.target as HTMLInputElement).checked;
+        await settingsApi.update({ pomodoro_lock_enabled: value } as Partial<AppSettings>);
+        toast.success('锁机设置已保存');
+      });
+    });
+
     container.querySelectorAll('.pomo-preset-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = (btn as HTMLElement).dataset.id!;
@@ -243,6 +512,9 @@ export const pomodoroPage = {
     pomodoroPage.updateTimerUI();
     pomodoroPage.startTick();
     pomodoroPage.startQuotes();
+
+    const s = store.get<AppSettings>('settings');
+    if (s?.pomodoro_lock_enabled) startLock();
 
     const layout = document.querySelector('.pomo-layout') as HTMLElement;
     const timerCard = document.querySelector('.pomo-timer-card') as HTMLElement;
@@ -293,6 +565,7 @@ export const pomodoroPage = {
     // Immediately clear interval and null out state to prevent any further ticks
     pomodoroPage.stopTick();
     pomoState = null;
+    stopLock();
 
     if (wasRunning && savedState.elapsedSeconds >= 60) {
       const totalMinutes = Math.round(savedState.elapsedSeconds / 60);
@@ -431,6 +704,12 @@ export const pomodoroPage = {
         : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 
       timer.classList.toggle('pomo-timer--paused', pomoState.paused);
+
+      const lockTimer = document.getElementById('pomoLockTimer');
+      if (lockTimer) {
+        lockTimer.textContent = timer.textContent;
+        lockTimer.classList.toggle('pomo-lock-overlay__timer--paused', pomoState.paused);
+      }
     }
 
     if (progressBar && pomoState.mode === 'countdown') {

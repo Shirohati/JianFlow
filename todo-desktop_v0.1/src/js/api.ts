@@ -134,7 +134,25 @@ export interface AppSettings {
   feedback_task_confetti_enabled: boolean;
   feedback_milestone_interval: number;
   show_secondary_todos: boolean;
+  pomodoro_lock_enabled: boolean;
+  pomodoro_lock_whitelist: string;
+  board_collapsed_groups: string;
 }
+
+export interface ForegroundInfo {
+  title: string;
+  exe: string;
+}
+
+export const lockApi = {
+  enter: () => invoke<void>('lock_enter'),
+  exit: () => invoke<void>('lock_exit'),
+  yield: () => invoke<void>('lock_yield'),
+  resume: () => invoke<void>('lock_resume'),
+  foreground: () => invoke<ForegroundInfo>('lock_foreground_info'),
+  activateApp: (exe: string) => invoke<boolean>('lock_activate_app', { exe }),
+  activateTitle: (keyword: string) => invoke<boolean>('lock_activate_title', { keyword }),
+};
 
 export const taskApi = {
   list: (filters?: TaskFilters) => invoke<TaskItem[]>('task_list', { filters: filters ?? {} }),

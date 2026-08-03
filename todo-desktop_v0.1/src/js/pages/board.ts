@@ -1,5 +1,5 @@
 import { store } from '../store';
-import { taskApi, categoryApi, connectionApi } from '../api';
+import { taskApi, categoryApi, connectionApi, settingsApi } from '../api';
 import { utils } from '../utils';
 import { initIcons } from '../icons';
 import { history } from '../history';
@@ -53,11 +53,26 @@ interface ResizeInfo {
   pendingH: number;
 }
 
+let collapsedGroups = new Set<string>();
+
+async function loadCollapsedGroups(): Promise<void> {
+  try {
+    const s = await settingsApi.get();
+    const arr = JSON.parse(s.board_collapsed_groups || '[]');
+    collapsedGroups = new Set<string>(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    collapsedGroups = new Set<string>();
+  }
+}
+
+function saveCollapsedGroups(): void {
+  void settingsApi.update({ board_collapsed_groups: JSON.stringify([...collapsedGroups]) } as Partial<AppSettings>).catch(() => {});
+}
+
 let drag: DragInfo | null = null;
 let resizeInfo: ResizeInfo | null = null;
 let openIds = new Set<string>();
 let selectedIds = new Set<string>();
-let collapsedGroups = new Set<string>();
 let boardZCounter = 10;
 let canvasScale = 1;
 let canvasOffX = 0;
@@ -148,6 +163,7 @@ export const boardPage = {
     store.set('categories', cats);
     const tasks = await taskApi.list();
     store.set('allTasks', tasks);
+    await loadCollapsedGroups();
     boardPage.renderSkeleton(inner);
     boardPage.bindEvents();
     await boardPage.render();
@@ -194,6 +210,10 @@ export const boardPage = {
     store.set('allTasks', tasks);
     const notes = tasks.filter(t => t.grid_x !== null && t.grid_y !== null && t.sub_type !== 'task');
     store.set('boardNotes', notes);
+    const validGroups = new Set(notes.map(n => n.group_id).filter((g): g is string => !!g));
+    let stale = false;
+    collapsedGroups.forEach(g => { if (!validGroups.has(g)) { collapsedGroups.delete(g); stale = true; } });
+    if (stale) saveCollapsedGroups();
     const conns = await connectionApi.list();
     store.set('connections', conns);
     const cats = store.get<Category[]>('categories') ?? [];
@@ -313,6 +333,7 @@ export const boardPage = {
       const x = first.grid_x ?? 0;
       const y = first.grid_y ?? 0;
       return `<div class="note note--node note--group-node" data-group-id="${gid}" style="left:${x}px;top:${y}px;--note-color:${groupColor};z-index:5">
+      <button class="note-group__expand" data-group-id="${gid}" title="展开分组">${icon('chevrons-down-up', 'size="12"')}</button>
       <div class="note__node-dot" style="background:${groupColor}"></div>
       <span class="note__node-label">${utils.escapeHtml(groupName)}</span>
       <div class="note__port note__port--in" data-port="in" data-group="${gid}"></div>
@@ -665,6 +686,7 @@ export const boardPage = {
         if (groupToggle) {
           const gid = groupToggle.dataset.groupId!;
           if (collapsedGroups.has(gid)) collapsedGroups.delete(gid); else collapsedGroups.add(gid);
+          saveCollapsedGroups();
           boardPage.render();
           return;
         }
@@ -767,6 +789,15 @@ export const boardPage = {
       // Check for collapsed group node drag
       const groupNode = noteEl.closest('.note--group-node') as HTMLElement | null;
       if (groupNode) {
+        // Clicking the expand button re-expands the group
+        const expandBtn = (e.target as HTMLElement).closest('.note-group__expand') as HTMLElement | null;
+        if (expandBtn) {
+          const gid = expandBtn.dataset.groupId!;
+          collapsedGroups.delete(gid);
+          saveCollapsedGroups();
+          boardPage.render();
+          return;
+        }
         const gid = groupNode.dataset.groupId!;
         const allTasks = store.get<TaskItem[]>('allTasks') ?? [];
         const groupNotes = allTasks.filter(t => t.group_id === gid);
@@ -1567,6 +1598,7 @@ export const boardPage = {
     history.push({ type: 'batch', entries: batchEntries });
     toast.success(`已分解 ${groupNotes.length} 个便签`);
     collapsedGroups.delete(gid);
+    saveCollapsedGroups();
     await boardPage.render();
   },
 
@@ -2483,6 +2515,7 @@ async function onDragUp(e: PointerEvent) {
     // Check if clicking on a collapsed group node
     if (drag.isGroupNode && drag.groupId) {
       collapsedGroups.delete(drag.groupId);
+      saveCollapsedGroups();
       await boardPage.render();
       drag = null;
       return;

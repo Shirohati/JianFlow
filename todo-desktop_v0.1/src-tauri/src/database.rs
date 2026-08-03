@@ -843,6 +843,15 @@ impl Database {
         if let Some(v) = updates.get("feedback_milestone_interval").and_then(|v| v.as_i64()) {
             data.settings.feedback_milestone_interval = v as i32;
         }
+        if let Some(v) = updates.get("pomodoro_lock_enabled").and_then(|v| v.as_bool()) {
+            data.settings.pomodoro_lock_enabled = v;
+        }
+        if let Some(v) = updates.get("pomodoro_lock_whitelist").and_then(|v| v.as_str()) {
+            data.settings.pomodoro_lock_whitelist = v.to_string();
+        }
+        if let Some(v) = updates.get("board_collapsed_groups").and_then(|v| v.as_str()) {
+            data.settings.board_collapsed_groups = v.to_string();
+        }
         let result = data.settings.clone();
         drop(data);
         self.save();

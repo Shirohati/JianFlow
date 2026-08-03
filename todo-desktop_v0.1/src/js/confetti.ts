@@ -87,6 +87,96 @@ export function triggerBurst(x: number, y: number, count: number = 14) {
   }
 }
 
+export function triggerInhale(x: number, y: number, count: number = 34) {
+  const c = getContainer();
+  const start = performance.now();
+  const total = 0.55;
+
+  // 粒子从四周被"吸"入中心：轨道螺旋收敛 + 加速 + 收缩
+  interface InhaleParticle {
+    el: HTMLDivElement;
+    r0: number;
+    angle: number;
+    dur: number;
+    spin: number;
+    size: number;
+    color: string;
+  }
+  const particles: InhaleParticle[] = [];
+  for (let i = 0; i < count; i++) {
+    const r0 = rand(36, 120);
+    const angle = rand(-Math.PI, Math.PI);
+    const dur = rand(0.32, 0.5);
+    const size = rand(3, 6);
+    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    const spin = rand(1.2, 4.5) * (Math.random() > 0.5 ? 1 : -1);
+    const el = document.createElement('div');
+    el.className = CONFETTI_CLASS;
+    const shape = Math.random() > 0.4 ? '50%' : '2px';
+    el.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${size}px;height:${size}px;background:${color};border-radius:${shape};opacity:1;box-shadow:0 0 6px ${color}`;
+    c.appendChild(el);
+    particles.push({ el, r0, angle, dur, spin, size, color });
+  }
+
+  // 湮灭信号环：从中心扩散一环后淡出
+  const ring = document.createElement('div');
+  ring.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:10px;height:10px;border:2px solid #fff;border-radius:50%;opacity:0;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 12px rgba(255,255,255,0.8)`;
+  c.appendChild(ring);
+
+  // 中心闪光
+  const flash = document.createElement('div');
+  flash.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:14px;height:14px;border-radius:50%;opacity:0;transform:translate(-50%,-50%);pointer-events:none;background:radial-gradient(circle,#fff 0%,rgba(255,240,180,0.9) 40%,transparent 75%)`;
+  c.appendChild(flash);
+
+  const animate = (now: number) => {
+    const t = (now - start) / 1000;
+    if (t >= total) {
+      particles.forEach(p => p.el.remove());
+      ring.remove();
+      flash.remove();
+      return;
+    }
+
+    // 环：0.05s 开始扩散，0.35s 内从 0 → 90px
+    const ringP = Math.min(1, Math.max(0, (t - 0.04) / 0.3));
+    const ringR = ringP * 90;
+    ring.style.width = `${ringR}px`;
+    ring.style.height = `${ringR}px`;
+    ring.style.opacity = String((1 - ringP) * 0.9);
+
+    // 闪光：结束时爆闪
+    const flashP = Math.min(1, Math.max(0, (t - 0.36) / 0.16));
+    if (flashP > 0) {
+      const fs = 1.8 - flashP * 0.9;
+      flash.style.transform = `translate(-50%,-50%) scale(${fs})`;
+      flash.style.opacity = String((1 - flashP) * 0.9);
+    }
+
+    for (const p of particles) {
+      const pt = Math.min(1, (t - 0) / p.dur);
+      if (pt <= 0) {
+        p.el.style.opacity = '1';
+        p.el.style.transform = `translate(-50%,-50%) scale(1)`;
+        continue;
+      }
+      if (pt >= 1) {
+        p.el.style.opacity = '0';
+        continue;
+      }
+      // 加速吸入：easeIn 曲线
+      const eased = pt * pt * pt;
+      const ang = p.angle + p.spin * pt * Math.PI;
+      const px = x + Math.cos(ang) * p.r0 * (1 - eased);
+      const py = y + Math.sin(ang) * p.r0 * (1 - eased);
+      const s = 1 - eased * 0.85;
+      p.el.style.transform = `translate(-50%,-50%) translate(${px - x}px, ${py - y}px) scale(${s}) rotate(${pt * 360}deg)`;
+      p.el.style.opacity = String(1 - eased * 1.1);
+    }
+    requestAnimationFrame(animate);
+  };
+  requestAnimationFrame(animate);
+}
+
 export function triggerScreenFlash() {
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9998;background:radial-gradient(circle,rgba(255,215,0,0.25),transparent 70%);opacity:1;transition:opacity 1.5s ease';

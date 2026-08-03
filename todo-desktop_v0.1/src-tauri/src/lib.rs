@@ -1,13 +1,15 @@
 mod models;
 mod database;
 mod commands;
+mod lock;
 
 use database::Database;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, TrayIconBuilder},
-    Manager, WindowEvent,
+    Emitter, Manager, RunEvent, WindowEvent,
 };
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -54,6 +56,16 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Ctrl+Alt+L：锁机让位期间提前结束番茄钟并解锁
+            let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyL);
+            app.global_shortcut().on_shortcut(shortcut, move |app, _sc, event| {
+                if event.state == ShortcutState::Pressed {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.emit("pomo://global-stop", ());
+                    }
+                }
+            })?;
 
             Ok(())
         })
@@ -119,13 +131,30 @@ pub fn run() {
             commands::data_import_legacy_json,
             commands::data_reset,
             commands::data_reset_tasks,
+            lock::lock_enter,
+            lock::lock_exit,
+            lock::lock_yield,
+            lock::lock_resume,
+            lock::lock_foreground_info,
+            lock::lock_activate_app,
+            lock::lock_activate_title,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                if lock::is_locked() {
+                    // Lock is active (or yielded to whitelisted app): never allow closing
+                    api.prevent_close();
+                } else {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("运行 Tauri 应用时出错");
+        .build(tauri::generate_context!())
+        .expect("构建 Tauri 应用时出错")
+        .run(|_app, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                lock::restore_on_exit();
+            }
+        });
 }

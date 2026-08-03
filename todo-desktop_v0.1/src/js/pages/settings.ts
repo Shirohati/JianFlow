@@ -212,6 +212,15 @@ export const settingsPage = {
       </div>
 
       <div class="settings-section">
+        <h3 class="settings-section-title">${icon('lock', 'size="14"')} 锁机白名单</h3>
+        <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:var(--space-1)">
+          <span class="settings-label">一行一个：程序名如 chrome.exe / 网站完整网址 / 窗口标题关键词（锁机开启开关在番茄钟页）</span>
+          <textarea class="input lock-whitelist-input" rows="5" placeholder="例如：chrome.exe&#10;https://www.bilibili.com/video/BVxxxxx&#10;勾股定理精讲">${(() => { try { const arr = JSON.parse(settings.pomodoro_lock_whitelist || '[]'); return Array.isArray(arr) ? utils.escapeHtml(arr.join('\n')) : ''; } catch { return ''; } })()}</textarea>
+          <button class="btn btn--primary btn--sm" id="lockWhitelistSaveBtn" style="align-self:flex-start">${icon('save', 'size="14"')} 保存白名单</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h3 class="settings-section-title">${icon('target', 'size="14"')} 学习目标</h3>
         <div class="settings-row">
           <span class="settings-label">每日目标 (分钟)</span>
@@ -381,6 +390,13 @@ export const settingsPage = {
         await settingsApi.update({ [key]: value } as Partial<AppSettings>);
         toast.success('设置已保存');
       });
+    });
+
+    document.getElementById('lockWhitelistSaveBtn')?.addEventListener('click', async () => {
+      const textarea = container.querySelector('.lock-whitelist-input') as HTMLTextAreaElement;
+      const keywords = (textarea?.value ?? '').split(/[\n\r]+/).map(s => s.trim()).filter(s => s.length > 0);
+      await settingsApi.update({ pomodoro_lock_whitelist: keywords.length ? JSON.stringify(keywords) : '[]' } as Partial<AppSettings>);
+      toast.success('白名单已保存');
     });
 
     document.getElementById('addCategoryBtn')?.addEventListener('click', async () => {

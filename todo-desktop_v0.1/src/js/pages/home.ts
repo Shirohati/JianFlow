@@ -1,12 +1,12 @@
-import { store } from '../store';
+﻿import { store } from '../store';
 import { router } from '../router';
 import { taskApi, categoryApi, dailyLogApi, settingsApi, timeRecordApi } from '../api';
 import { utils } from '../utils';
 import { initIcons } from '../icons';
 import { toast } from '../components/toast';
 import type { TaskItem, Category, AppSettings } from '../api';
-import { playTaskPop } from '../audio';
-import { triggerBurst } from '../confetti';
+import { playTaskPop, playStepTick } from '../audio';
+import { triggerBurst, triggerInhale } from '../confetti';
 
 function icon(name: string, attrs: string = ''): string {
   return `<i data-lucide="${name}" ${attrs}></i>`;
@@ -40,6 +40,8 @@ let homeOpenIds = new Set<string>();
 let homeZCounter = 50;
 let homeAddSecondary = false;
 const homeOpenSteps = new Set<string>();
+let homeStepAddingId: string | null = null;
+let homeStepEditing: { parentId: string; stepId: string } | null = null;
 
 function stepId(): string {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -183,7 +185,7 @@ export const homePage = {
   },
 
   bindGlobalEvents(): void {
-    const container = document.querySelector('#page-home .page__inner');
+    const container = document.querySelector('#page-home .page__inner') as HTMLElement | null;
     if (!container) return;
 
     container.querySelector('.home-prev-btn')?.addEventListener('click', () => homePage.goPrevDay());
@@ -224,6 +226,12 @@ export const homePage = {
       });
     }
 
+    const dailyLog = container.querySelector('.home-daily-log') as HTMLTextAreaElement | null;
+    if (dailyLog) dailyLog.addEventListener('input', () => debounceSaveLog());
+
+    if (container.dataset.eventsBound) return;
+    container.dataset.eventsBound = '1';
+
     container.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       const secBtn = target.closest('.task-sec-btn') as HTMLElement | null;
@@ -236,6 +244,10 @@ export const homePage = {
       if (stepToggle) { homePage.toggleStep(stepToggle.dataset.parent!, stepToggle.dataset.step!); return; }
       const stepDel = target.closest('.task-step-del') as HTMLElement | null;
       if (stepDel) { homePage.deleteStep(stepDel.dataset.parent!, stepDel.dataset.step!); return; }
+      const stepAddBtn = target.closest('.task-step-add-btn') as HTMLElement | null;
+      if (stepAddBtn) { homeStepAddingId = stepAddBtn.dataset.parent!; homePage.render(); return; }
+      const stepEdit = target.closest('.task-step-edit') as HTMLElement | null;
+      if (stepEdit) { homeStepEditing = { parentId: stepEdit.dataset.parent!, stepId: stepEdit.dataset.step! }; homePage.render(); return; }
       const secHead = target.closest('[data-action="toggle-secondary"]') as HTMLElement | null;
       if (secHead) { homePage.toggleSecondarySection(); return; }
       const foldHeader = target.closest('.fold-panel__header') as HTMLElement | null;
@@ -293,21 +305,45 @@ export const homePage = {
       }) as EventListener);
     }
 
-    const dailyLog = container.querySelector('.home-daily-log') as HTMLTextAreaElement | null;
-    if (dailyLog) dailyLog.addEventListener('input', () => debounceSaveLog());
-
     container.addEventListener('keydown', (e) => {
-      const inp = (e.target as HTMLElement).closest('.task-step-input') as HTMLInputElement | null;
-      if (!inp) return;
-      if ((e as KeyboardEvent).key === 'Enter') {
+      const el = e.target as HTMLElement;
+      const key = (e as KeyboardEvent).key;
+      const stepInp = el.closest('.task-step-input') as HTMLInputElement | null;
+      const editInp = el.closest('.task-step-edit-input') as HTMLInputElement | null;
+      if (!stepInp && !editInp) return;
+      if (key === 'Enter') {
         e.preventDefault();
-        const text = inp.value.trim();
-        const parentId = inp.dataset.parent;
-        if (text && parentId) { homePage.addStep(parentId, text); inp.value = ''; }
-      } else if ((e as KeyboardEvent).key === 'Escape') {
-        inp.value = '';
-        (inp as HTMLInputElement).blur();
+        if (stepInp) {
+          const text = stepInp.value.trim();
+          const parentId = stepInp.dataset.parent;
+          if (text && parentId) { homePage.addStep(parentId, text); stepInp.value = ''; }
+        } else if (editInp && homeStepEditing) {
+          const title = editInp.value.trim();
+          const { parentId, stepId } = homeStepEditing;
+          homeStepEditing = null;
+          if (title) homePage.editStep(parentId, stepId, title); else homePage.render();
+        }
+      } else if (key === 'Escape') {
+        e.preventDefault();
+        if (stepInp) {
+          homeStepAddingId = null;
+          homePage.render();
+        } else {
+          homeStepEditing = null;
+          homePage.render();
+        }
       }
+    });
+
+    container.addEventListener('focusout', (e) => {
+      const editInp = (e.target as HTMLElement).closest('.task-step-edit-input') as HTMLInputElement | null;
+      if (!editInp) return;
+      const parentId = editInp.dataset.parent!;
+      const stepId = editInp.dataset.step!;
+      if (!homeStepEditing || homeStepEditing.parentId !== parentId || homeStepEditing.stepId !== stepId) return;
+      const title = editInp.value.trim();
+      homeStepEditing = null;
+      if (title) homePage.editStep(parentId, stepId, title); else homePage.render();
     });
 
     window.addEventListener('resize', () => homePage.onWindowResize());
@@ -354,6 +390,14 @@ export const homePage = {
     const log = await dailyLogApi.get(currentDate);
     const logTextarea = document.querySelector('.home-daily-log') as HTMLTextAreaElement | null;
     if (logTextarea) logTextarea.value = log || '';
+    if (homeStepAddingId) {
+      const inp = document.querySelector(`.task-step-input[data-parent="${homeStepAddingId}"]`) as HTMLInputElement | null;
+      inp?.focus();
+    }
+    if (homeStepEditing) {
+      const inp = document.querySelector(`.task-step-edit-input[data-parent="${homeStepEditing.parentId}"][data-step="${homeStepEditing.stepId}"]`) as HTMLInputElement | null;
+      inp?.focus();
+    }
     initIcons();
   },
 
@@ -455,8 +499,14 @@ export const homePage = {
         zIdx = isOpen ? ++homeZCounter : 50;
       }
       const isLongterm = n.pin_date === 'longterm';
-      const wStyle = isOpen ? (n.open_width ? `width:${n.open_width}px;` : 'width:280px;') : (n.note_width ? `width:${n.note_width}px;` : '');
-      const hStyle = isOpen ? (n.open_height ? `max-height:${n.open_height}px;overflow-y:auto;` : '') : (n.note_height ? `max-height:${n.note_height}px;overflow-y:auto;` : '');
+      const wOpen = n.open_width ?? n.note_width;
+      const hOpen = n.open_height ?? n.note_height;
+      const wStyle = isOpen
+        ? (wOpen ? `width:${wOpen}px;` : '')
+        : (n.note_width ? `width:${n.note_width}px;` : '');
+      const hStyle = isOpen
+        ? (hOpen ? `max-height:${hOpen}px;overflow-y:auto;` : '')
+        : (n.note_height ? `max-height:${n.note_height}px;overflow-y:auto;` : '');
 
       const el = document.createElement('div');
       el.className = `home-note home-note--floating ${isOpen ? 'home-note--open' : 'home-note--preview'}`;
@@ -861,15 +911,23 @@ export const homePage = {
     </div>
     ${!isCompleted ? `
     <div class="task-steps">
-      ${(t.steps ?? []).map(s => `
+      ${(t.steps ?? []).map(s => {
+        const isEditing = homeStepEditing && homeStepEditing.parentId === t.id && homeStepEditing.stepId === s.id;
+        return `
         <div class="task-step ${s.done ? 'task-step--done' : ''}" data-parent="${t.id}">
           <button class="task-step-toggle" data-parent="${t.id}" data-step="${s.id}">${s.done ? icon('check-square', 'size="14"') : icon('square', 'size="14"')}</button>
-          <span class="task-step-title">${utils.escapeHtml(s.title)}</span>
+          ${isEditing
+            ? `<input class="task-step-edit-input" data-parent="${t.id}" data-step="${s.id}" value="${utils.escapeHtml(s.title)}" />`
+            : `<span class="task-step-title">${utils.escapeHtml(s.title)}</span>
+          <button class="task-step-edit" data-parent="${t.id}" data-step="${s.id}" title="编辑步骤">${icon('pencil', 'size="12"')}</button>`}
           <button class="task-step-del" data-parent="${t.id}" data-step="${s.id}" title="删除步骤">${icon('x', 'size="12"')}</button>
-        </div>`).join('')}
-      <div class="task-step-add">
+        </div>`;
+      }).join('')}
+      ${homeStepAddingId === t.id
+        ? `<div class="task-step-add">
         <input class="input input--sm task-step-input" data-parent="${t.id}" placeholder="添加步骤，回车确认" />
-      </div>
+      </div>`
+        : `<button class="task-step-add-btn" data-parent="${t.id}" title="添加步骤">${icon('plus', 'size="12"')} 添加步骤</button>`}
     </div>` : ''}
     </div>`;
   },
@@ -1633,7 +1691,27 @@ export const homePage = {
     }
     await taskApi.update(id, updates);
     toast.success(newStatus === 'completed' ? '已完成' : '已恢复待办');
-    if (newStatus === 'completed') homePage.triggerTaskFeedback(id);
+    if (newStatus === 'completed') {
+      const s = store.get<AppSettings>('settings');
+      if (s?.feedback_task_sound_enabled) playTaskPop();
+      const wrap = document.querySelector(`.task-wrap[data-id="${id}"]`) as HTMLElement | null;
+      if (s?.feedback_task_confetti_enabled && wrap) {
+        const btn = wrap.querySelector('.task-toggle') as HTMLElement | null;
+        const rect = btn?.getBoundingClientRect();
+        const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+        const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+        triggerInhale(x, y);
+        // 以勾选按钮为湮灭收缩原点
+        if (rect) {
+          const wrapRect = wrap.getBoundingClientRect();
+          wrap.style.setProperty('--annihilate-x', `${(((rect.left + rect.width / 2) - wrapRect.left) / Math.max(1, wrapRect.width)) * 100}%`);
+          wrap.style.setProperty('--annihilate-y', `${(((rect.top + rect.height / 2) - wrapRect.top) / Math.max(1, wrapRect.height)) * 100}%`);
+        }
+        wrap.classList.add('task-item--annihilate');
+        wrap.style.pointerEvents = 'none';
+        await new Promise<void>(resolve => setTimeout(resolve, 560));
+      }
+    }
     await homePage.render();
   },
 
@@ -1665,8 +1743,16 @@ export const homePage = {
     const btn = wrap.querySelector('.task-steps-btn') as HTMLElement | null;
     if (btn) btn.classList.toggle('task-steps-btn--open', open);
     if (open) {
+      if (!wrap.querySelector('.task-step')) {
+        homeStepAddingId = id;
+        homePage.render();
+        return;
+      }
       const inp = wrap.querySelector('.task-step-input') as HTMLInputElement | null;
       if (inp) inp.focus();
+    } else if (homeStepAddingId === id) {
+      homeStepAddingId = null;
+      homePage.render();
     }
   },
 
@@ -1677,6 +1763,7 @@ export const homePage = {
     const steps = [...(task.steps ?? []), { id: stepId(), title, done: false }];
     await taskApi.update(id, { steps });
     homeOpenSteps.add(id);
+    homeStepAddingId = null;
     toast.success('已添加步骤');
     await homePage.render();
   },
@@ -1685,7 +1772,28 @@ export const homePage = {
     const allTasks = store.get<TaskItem[]>('allTasks') ?? [];
     const task = allTasks.find(t => t.id === parentId);
     if (!task) return;
+    const cur = (task.steps ?? []).find(s => s.id === stepId);
     const steps = (task.steps ?? []).map(s => s.id === stepId ? { ...s, done: !s.done } : s);
+    await taskApi.update(parentId, { steps });
+    if (cur && !cur.done) {
+      const s = store.get<AppSettings>('settings');
+      if (s?.feedback_task_sound_enabled) playStepTick();
+      if (s?.feedback_task_confetti_enabled) {
+        const btn = document.querySelector(`.task-step-toggle[data-step="${stepId}"]`) as HTMLElement | null;
+        const rect = btn?.getBoundingClientRect();
+        const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+        const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+        triggerBurst(x, y, 6);
+      }
+    }
+    await homePage.render();
+  },
+
+  async editStep(parentId: string, stepId: string, title: string): Promise<void> {
+    const allTasks = store.get<TaskItem[]>('allTasks') ?? [];
+    const task = allTasks.find(t => t.id === parentId);
+    if (!task) return;
+    const steps = (task.steps ?? []).map(s => s.id === stepId ? { ...s, title } : s);
     await taskApi.update(parentId, { steps });
     await homePage.render();
   },
@@ -1818,6 +1926,8 @@ export const homePage = {
     store.set('currentDate', utils.formatDate(d));
     homeOpenIds.clear();
     homeOpenSteps.clear();
+    homeStepAddingId = null;
+    homeStepEditing = null;
     homePage.render();
   },
 
@@ -1863,7 +1973,9 @@ export const homePage = {
       if (dayEl && dayEl.dataset.date) {
         store.set('currentDate', dayEl.dataset.date);
         homeOpenIds.clear();
-    homeOpenSteps.clear();
+        homeOpenSteps.clear();
+        homeStepAddingId = null;
+        homeStepEditing = null;
         cal.remove();
         homePage.render();
       }
@@ -1882,6 +1994,8 @@ export const homePage = {
     store.set('currentDate', utils.formatDate(d));
     homeOpenIds.clear();
     homeOpenSteps.clear();
+    homeStepAddingId = null;
+    homeStepEditing = null;
     homePage.render();
   },
 
@@ -1889,6 +2003,8 @@ export const homePage = {
     store.set('currentDate', utils.getTodayStr());
     homeOpenIds.clear();
     homeOpenSteps.clear();
+    homeStepAddingId = null;
+    homeStepEditing = null;
     homePage.render();
   },
 };

@@ -56,3 +56,26 @@ export function playTaskPop() {
   osc.start(now);
   osc.stop(now + 0.15);
 }
+
+export function playStepTick() {
+  const ctx = getCtx();
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(880, now);
+  osc.frequency.exponentialRampToValueAtTime(660, now + 0.1);
+  gain.gain.setValueAtTime(0.05, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.12);
+}
+
+export function playLockWarn() {
+  playTones([
+    { freq: 330, start: 0, dur: 0.18, vol: 0.18 },
+    { freq: 262, start: 0.2, dur: 0.25, vol: 0.2 },
+  ]);
+}

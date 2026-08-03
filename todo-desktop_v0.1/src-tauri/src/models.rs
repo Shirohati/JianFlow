@@ -225,6 +225,9 @@ pub struct AppSettings {
     pub feedback_task_confetti_enabled: bool,
     pub feedback_milestone_interval: i32,
     pub show_secondary_todos: bool,
+    pub pomodoro_lock_enabled: bool,
+    pub pomodoro_lock_whitelist: String,
+    pub board_collapsed_groups: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -266,6 +269,9 @@ impl Default for AppSettings {
             feedback_task_confetti_enabled: true,
             feedback_milestone_interval: 25,
             show_secondary_todos: true,
+            pomodoro_lock_enabled: false,
+            pomodoro_lock_whitelist: "[]".into(),
+            board_collapsed_groups: "[]".into(),
         }
     }
 }
@@ -318,6 +324,9 @@ impl Default for AppData {
                 feedback_task_confetti_enabled: true,
                 feedback_milestone_interval: 25,
                 show_secondary_todos: true,
+                pomodoro_lock_enabled: false,
+                pomodoro_lock_whitelist: "[]".into(),
+                board_collapsed_groups: "[]".into(),
             },
             daily_logs: HashMap::new(),
             version: "0.1.1".into(),
