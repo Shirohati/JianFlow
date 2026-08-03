@@ -2,6 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct TaskStep {
+    pub id: String,
+    pub title: String,
+    pub done: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct TaskCreateInput {
     pub id: Option<String>,
     pub r#type: Option<String>,
@@ -37,6 +44,8 @@ pub struct TaskCreateInput {
     pub schedule_start: Option<String>,
     pub schedule_end: Option<String>,
     pub is_secondary: Option<bool>,
+    pub is_important: Option<bool>,
+    pub steps: Option<Vec<TaskStep>>,
 }
 
 impl TaskCreateInput {
@@ -76,6 +85,8 @@ impl TaskCreateInput {
             schedule_start: self.schedule_start,
             schedule_end: self.schedule_end,
             is_secondary: self.is_secondary.unwrap_or(false),
+            is_important: self.is_important.unwrap_or(false),
+            steps: self.steps.unwrap_or_default(),
             created_at: String::new(),
             updated_at: String::new(),
         }
@@ -119,6 +130,10 @@ pub struct TaskItem {
     pub schedule_end: Option<String>,
     #[serde(default)]
     pub is_secondary: bool,
+    #[serde(default)]
+    pub is_important: bool,
+    #[serde(default)]
+    pub steps: Vec<TaskStep>,
     pub created_at: String,
     pub updated_at: String,
 }

@@ -39,6 +39,11 @@ let homeResizeInfo: { noteId: string; startX: number; startY: number; startW: nu
 let homeOpenIds = new Set<string>();
 let homeZCounter = 50;
 let homeAddSecondary = false;
+const homeOpenSteps = new Set<string>();
+
+function stepId(): string {
+  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function isSecondaryCollapsed(): boolean {
   return localStorage.getItem('home_secondary_collapsed') === '1';
@@ -94,6 +99,8 @@ export const homePage = {
         parent_id: t.parent_id,
         recurrence: t.recurrence,
         is_secondary: t.is_secondary,
+        is_important: false,
+        steps: t.steps ?? [],
       });
       migrated++;
     }
@@ -221,6 +228,14 @@ export const homePage = {
       const target = e.target as HTMLElement;
       const secBtn = target.closest('.task-sec-btn') as HTMLElement | null;
       if (secBtn) { homePage.setTodoSecondary(secBtn.dataset.id!, secBtn.dataset.sec === '1'); return; }
+      const starBtn = target.closest('.task-star') as HTMLElement | null;
+      if (starBtn && !starBtn.classList.contains('task-star--static')) { homePage.toggleImportant(starBtn.dataset.id!); return; }
+      const stepsBtn = target.closest('.task-steps-btn') as HTMLElement | null;
+      if (stepsBtn) { homePage.toggleStepsArea(stepsBtn.dataset.id!); return; }
+      const stepToggle = target.closest('.task-step-toggle') as HTMLElement | null;
+      if (stepToggle) { homePage.toggleStep(stepToggle.dataset.parent!, stepToggle.dataset.step!); return; }
+      const stepDel = target.closest('.task-step-del') as HTMLElement | null;
+      if (stepDel) { homePage.deleteStep(stepDel.dataset.parent!, stepDel.dataset.step!); return; }
       const secHead = target.closest('[data-action="toggle-secondary"]') as HTMLElement | null;
       if (secHead) { homePage.toggleSecondarySection(); return; }
       const foldHeader = target.closest('.fold-panel__header') as HTMLElement | null;
@@ -280,6 +295,20 @@ export const homePage = {
 
     const dailyLog = container.querySelector('.home-daily-log') as HTMLTextAreaElement | null;
     if (dailyLog) dailyLog.addEventListener('input', () => debounceSaveLog());
+
+    container.addEventListener('keydown', (e) => {
+      const inp = (e.target as HTMLElement).closest('.task-step-input') as HTMLInputElement | null;
+      if (!inp) return;
+      if ((e as KeyboardEvent).key === 'Enter') {
+        e.preventDefault();
+        const text = inp.value.trim();
+        const parentId = inp.dataset.parent;
+        if (text && parentId) { homePage.addStep(parentId, text); inp.value = ''; }
+      } else if ((e as KeyboardEvent).key === 'Escape') {
+        inp.value = '';
+        (inp as HTMLInputElement).blur();
+      }
+    });
 
     window.addEventListener('resize', () => homePage.onWindowResize());
   },
@@ -798,9 +827,15 @@ export const homePage = {
     const parentName = parentTask ? parentTask.title : '';
     const hasParent = !!t.parent_id;
     const isSecondary = !!t.is_secondary;
+    const isImportant = !!t.is_important;
     const scheduleLabel = t.schedule_start ? `${t.schedule_start}${t.schedule_end ? '-' + t.schedule_end : ''}` : '';
+    const isToday = (store.get<string>('currentDate') ?? utils.getTodayStr()) === utils.getTodayStr();
+    const hasSteps = (t.steps ?? []).length > 0;
+    const stepsDone = (t.steps ?? []).filter(s => s.done).length;
+    const stepsOpen = homeOpenSteps.has(t.id);
     return `
-    <div class="task-item ${isCompleted ? 'task-completed' : ''}" data-id="${t.id}">
+    <div class="task-wrap${stepsOpen ? ' task-wrap--open' : ''}" data-id="${t.id}">
+    <div class="task-item ${isCompleted ? 'task-completed' : ''} ${isImportant ? 'task-item--important' : ''}" data-id="${t.id}">
       <button class="task-toggle" data-id="${t.id}">
         ${isCompleted ? icon('check-circle-2', 'size="20"') : icon('circle', 'size="20"')}
       </button>
@@ -812,10 +847,30 @@ export const homePage = {
           ${parentName ? `<span class="task-source">${icon('link', 'size="12"')} <a class="task-source-link" data-parent-id="${t.parent_id}">${utils.escapeHtml(parentName)}</a></span>` : ''}
         </span>
       </div>
+      ${isImportant
+        ? (isToday
+          ? `<button class="task-star task-star--on" data-id="${t.id}" title="取消重要标记">${icon('star', 'size="14"')}</button>`
+          : `<span class="task-star task-star--on task-star--static" title="历史重要标记">${icon('star', 'size="14"')}</span>`)
+        : (isToday ? `<button class="task-star" data-id="${t.id}" title="标记为重要待办">${icon('star', 'size="14"')}</button>` : '')}
+      ${!isCompleted ? `<button class="task-steps-btn${stepsOpen ? ' task-steps-btn--open' : ''}" data-id="${t.id}" title="${hasSteps ? (stepsOpen ? '收起步骤' : '展开步骤') : '添加步骤'}">${icon(hasSteps ? 'chevron-down' : 'list-plus', 'size="14"')}</button>` : ''}
+      ${!isCompleted && hasSteps ? `<span class="task-steps-hint">${stepsDone}/${(t.steps ?? []).length}</span>` : ''}
       ${!hasParent ? `<button class="task-attach-btn" data-id="${t.id}" title="挂靠到便签">${icon('map-pin', 'size="14"')}</button>` : ''}
       ${t.recurrence ? `<span class="task-recurrence" title="重复: ${t.recurrence === 'daily' ? '每天' : t.recurrence === 'weekly' ? '每周' : '每月'}">${t.recurrence === 'daily' ? '🔁每天' : t.recurrence === 'weekly' ? '🔁每周' : '🔁每月'}</span>` : ''}
       ${isSecondary ? `<button class="task-sec-btn" data-id="${t.id}" data-sec="0" title="升为主要待办">${icon('arrow-up', 'size="14"')}</button>` : `<button class="task-sec-btn" data-id="${t.id}" data-sec="1" title="降为次要待办">${icon('arrow-down', 'size="14"')}</button>`}
       <button class="btn btn--ghost btn--sm task-delete" data-id="${t.id}" title="删除">${icon('trash-2', 'size="14"')}</button>
+    </div>
+    ${!isCompleted ? `
+    <div class="task-steps">
+      ${(t.steps ?? []).map(s => `
+        <div class="task-step ${s.done ? 'task-step--done' : ''}" data-parent="${t.id}">
+          <button class="task-step-toggle" data-parent="${t.id}" data-step="${s.id}">${s.done ? icon('check-square', 'size="14"') : icon('square', 'size="14"')}</button>
+          <span class="task-step-title">${utils.escapeHtml(s.title)}</span>
+          <button class="task-step-del" data-parent="${t.id}" data-step="${s.id}" title="删除步骤">${icon('x', 'size="12"')}</button>
+        </div>`).join('')}
+      <div class="task-step-add">
+        <input class="input input--sm task-step-input" data-parent="${t.id}" placeholder="添加步骤，回车确认" />
+      </div>
+    </div>` : ''}
     </div>`;
   },
 
@@ -1572,7 +1627,11 @@ export const homePage = {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const newStatus = task.todo_status === 'completed' ? 'pending' : 'completed';
-    await taskApi.update(id, { todo_status: newStatus });
+    const updates: Partial<TaskItem> = { todo_status: newStatus };
+    if (task.steps && task.steps.length > 0) {
+      updates.steps = task.steps.map(s => ({ ...s, done: newStatus === 'completed' }));
+    }
+    await taskApi.update(id, updates);
     toast.success(newStatus === 'completed' ? '已完成' : '已恢复待办');
     if (newStatus === 'completed') homePage.triggerTaskFeedback(id);
     await homePage.render();
@@ -1581,6 +1640,63 @@ export const homePage = {
   async setTodoSecondary(id: string, isSecondary: boolean): Promise<void> {
     await taskApi.update(id, { is_secondary: isSecondary });
     toast.success(isSecondary ? '已降为次要待办' : '已升为主要待办');
+    await homePage.render();
+  },
+
+  async toggleImportant(id: string): Promise<void> {
+    const today = utils.getTodayStr();
+    const currentDate = store.get<string>('currentDate') ?? today;
+    if (currentDate !== today) { toast.info('只能今日标记重要待办'); return; }
+    const allTasks = store.get<TaskItem[]>('allTasks') ?? [];
+    const task = allTasks.find(t => t.id === id);
+    if (!task) return;
+    const next = !task.is_important;
+    await taskApi.update(id, { is_important: next });
+    toast.success(next ? '已标记为重要待办' : '已取消重要标记');
+    await homePage.render();
+  },
+
+  toggleStepsArea(id: string): void {
+    const wrap = document.querySelector(`.task-wrap[data-id="${id}"]`) as HTMLElement | null;
+    if (!wrap) return;
+    const open = !homeOpenSteps.has(id);
+    if (open) homeOpenSteps.add(id); else homeOpenSteps.delete(id);
+    wrap.classList.toggle('task-wrap--open', open);
+    const btn = wrap.querySelector('.task-steps-btn') as HTMLElement | null;
+    if (btn) btn.classList.toggle('task-steps-btn--open', open);
+    if (open) {
+      const inp = wrap.querySelector('.task-step-input') as HTMLInputElement | null;
+      if (inp) inp.focus();
+    }
+  },
+
+  async addStep(id: string, title: string): Promise<void> {
+    const allTasks = store.get<TaskItem[]>('allTasks') ?? [];
+    const task = allTasks.find(t => t.id === id);
+    if (!task) return;
+    const steps = [...(task.steps ?? []), { id: stepId(), title, done: false }];
+    await taskApi.update(id, { steps });
+    homeOpenSteps.add(id);
+    toast.success('已添加步骤');
+    await homePage.render();
+  },
+
+  async toggleStep(parentId: string, stepId: string): Promise<void> {
+    const allTasks = store.get<TaskItem[]>('allTasks') ?? [];
+    const task = allTasks.find(t => t.id === parentId);
+    if (!task) return;
+    const steps = (task.steps ?? []).map(s => s.id === stepId ? { ...s, done: !s.done } : s);
+    await taskApi.update(parentId, { steps });
+    await homePage.render();
+  },
+
+  async deleteStep(parentId: string, stepId: string): Promise<void> {
+    const allTasks = store.get<TaskItem[]>('allTasks') ?? [];
+    const task = allTasks.find(t => t.id === parentId);
+    if (!task) return;
+    const steps = (task.steps ?? []).filter(s => s.id !== stepId);
+    await taskApi.update(parentId, { steps });
+    toast.info('已删除步骤');
     await homePage.render();
   },
 
@@ -1701,6 +1817,7 @@ export const homePage = {
     d.setDate(d.getDate() - 1);
     store.set('currentDate', utils.formatDate(d));
     homeOpenIds.clear();
+    homeOpenSteps.clear();
     homePage.render();
   },
 
@@ -1746,6 +1863,7 @@ export const homePage = {
       if (dayEl && dayEl.dataset.date) {
         store.set('currentDate', dayEl.dataset.date);
         homeOpenIds.clear();
+    homeOpenSteps.clear();
         cal.remove();
         homePage.render();
       }
@@ -1763,12 +1881,14 @@ export const homePage = {
     d.setDate(d.getDate() + 1);
     store.set('currentDate', utils.formatDate(d));
     homeOpenIds.clear();
+    homeOpenSteps.clear();
     homePage.render();
   },
 
   goToToday(): void {
     store.set('currentDate', utils.getTodayStr());
     homeOpenIds.clear();
+    homeOpenSteps.clear();
     homePage.render();
   },
 };

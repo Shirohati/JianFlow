@@ -316,6 +316,8 @@ fn do_import_legacy(db: &Database, raw: &str) -> Result<String, String> {
                 schedule_start: None,
                 schedule_end: None,
                 is_secondary: false,
+                is_important: false,
+                steps: Vec::new(),
                 created_at,
                 updated_at: String::new(),
             };

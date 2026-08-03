@@ -213,6 +213,12 @@ impl Database {
         if let Some(v) = updates.get("is_secondary").and_then(|v| v.as_bool()) {
             task.is_secondary = v;
         }
+        if let Some(v) = updates.get("is_important").and_then(|v| v.as_bool()) {
+            task.is_important = v;
+        }
+        if let Some(v) = updates.get("steps") {
+            task.steps = serde_json::from_value(v.clone()).unwrap_or_default();
+        }
         let result = task.clone();
         drop(data);
         self.save();
@@ -370,6 +376,8 @@ impl Database {
                     schedule_start: None,
                     schedule_end: None,
                     is_secondary: task.is_secondary,
+                    is_important: false,
+                    steps: task.steps.clone(),
                     created_at: now.clone(),
                     updated_at: now.clone(),
                 };

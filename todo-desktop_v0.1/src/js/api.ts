@@ -1,5 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 
+export interface TaskStep {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
 export interface TaskItem {
   id: string;
   type: string;
@@ -35,6 +41,8 @@ export interface TaskItem {
   schedule_start: string | null;
   schedule_end: string | null;
   is_secondary: boolean;
+  is_important: boolean;
+  steps: TaskStep[];
   created_at: string;
   updated_at: string;
 }
