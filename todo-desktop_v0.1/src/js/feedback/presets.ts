@@ -104,4 +104,85 @@ export const DEFAULT_FEEDBACK: StyleFeedbackMap = {
 
 export const FEEDBACK_STYLES: Record<string, StyleFeedbackMap> = {
   default: DEFAULT_FEEDBACK,
+  pop: {
+    'task-done': {
+      sound: {
+        kind: 'tones',
+        tones: [
+          { freq: 660, start: 0, dur: 0.1, vol: 0.16 },
+          { freq: 990, start: 0.08, dur: 0.16, vol: 0.16 },
+        ],
+        oscType: 'square',
+      },
+      particles: { kind: 'burst', count: 26 },
+    },
+    'task-done-inhale': {
+      sound: {
+        kind: 'tones',
+        tones: [
+          { freq: 660, start: 0, dur: 0.1, vol: 0.16 },
+          { freq: 990, start: 0.08, dur: 0.16, vol: 0.16 },
+        ],
+        oscType: 'square',
+      },
+      particles: { kind: 'inhale', count: 46 },
+    },
+    'step-tick': {
+      sound: { kind: 'slide', slide: { from: 880, to: 440, dur: 0.08, vol: 0.07 } },
+      particles: { kind: 'burst', count: 10 },
+    },
+    'pomo-done': {
+      sound: {
+        kind: 'tones',
+        tones: [
+          { freq: 523.25, start: 0, dur: 0.18, vol: 0.3 },
+          { freq: 659.25, start: 0.12, dur: 0.18, vol: 0.3 },
+          { freq: 783.99, start: 0.24, dur: 0.18, vol: 0.3 },
+          { freq: 1046.5, start: 0.36, dur: 0.4, vol: 0.4 },
+          { freq: 1318.5, start: 0.5, dur: 0.5, vol: 0.35 },
+        ],
+        oscType: 'square',
+      },
+      particles: { kind: 'confetti', count: 140 },
+      flash: true,
+    },
+    'goal-reached': {
+      sound: {
+        kind: 'tones',
+        tones: [
+          { freq: 523.25, start: 0, dur: 0.15, vol: 0.3 },
+          { freq: 659.25, start: 0.1, dur: 0.15, vol: 0.3 },
+          { freq: 783.99, start: 0.2, dur: 0.15, vol: 0.3 },
+          { freq: 1046.5, start: 0.3, dur: 0.2, vol: 0.35 },
+          { freq: 1318.5, start: 0.42, dur: 0.45, vol: 0.35 },
+        ],
+        oscType: 'square',
+      },
+      particles: { kind: 'confetti', count: 200 },
+      flash: true,
+    },
+    'milestone': {
+      sound: {
+        kind: 'tones',
+        tones: [
+          { freq: 660, start: 0, dur: 0.12, vol: 0.22 },
+          { freq: 880, start: 0.1, dur: 0.12, vol: 0.24 },
+          { freq: 1100, start: 0.2, dur: 0.2, vol: 0.26 },
+        ],
+        oscType: 'square',
+      },
+      particles: { kind: 'confetti', count: 90 },
+    },
+    'lock-warn': {
+      sound: {
+        kind: 'tones',
+        tones: [
+          { freq: 392, start: 0, dur: 0.15, vol: 0.22 },
+          { freq: 311, start: 0.18, dur: 0.15, vol: 0.22 },
+          { freq: 262, start: 0.36, dur: 0.25, vol: 0.24 },
+        ],
+        oscType: 'square',
+      },
+    },
+  },
 };

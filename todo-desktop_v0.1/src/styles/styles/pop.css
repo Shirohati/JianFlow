@@ -1,2 +1,308 @@
-/* 波普风格：高饱和撞色、粗描边、圆形元素、网点/斜纹装饰。
-   以 html[data-app-style="pop"] 为作用域，覆盖 tokens 与组件外观。 */
+/* 波普风格：高饱和撞色、粗描边、硬阴影、圆形元素、波点/斜纹装饰 */
+html[data-app-style="pop"] {
+  --color-primary: #ff2e74;
+  --color-primary-hover: #e0185e;
+  --color-primary-light: #ffe1ec;
+  --color-primary-lighter: #ffc9dd;
+  --color-primary-rgb: 255, 46, 116;
+  --color-success: #00c26a;
+  --color-success-hover: #00a85c;
+  --color-success-light: #d9f9ec;
+  --color-success-rgb: 0, 194, 106;
+  --color-danger: #ff3b30;
+  --color-danger-hover: #e02b21;
+  --color-danger-light: #ffe0de;
+  --color-danger-rgb: 255, 59, 48;
+  --color-warning: #ff9500;
+  --color-warning-hover: #e08500;
+  --color-warning-light: #fff1d6;
+  --color-warning-rgb: 255, 149, 0;
+  --color-info: #00a8e8;
+  --color-info-light: #e0f6ff;
+
+  --bg: #fff6e0;
+  --bg2: #ffefc7;
+  --bg3: #ffe4a3;
+  --card-bg: #ffffff;
+  --card-bg-hover: #fffdf5;
+  --text: #26221c;
+  --text-light: #7a6f5f;
+  --text-lighter: #a89c8a;
+  --text-inverse: #ffffff;
+
+  --border: #26221c;
+  --border-light: #d8cbb4;
+  --border-focus: var(--color-primary);
+
+  --shadow-xs: 2px 2px 0 rgba(38, 34, 28, 0.25);
+  --shadow-sm: 3px 3px 0 rgba(38, 34, 28, 0.3);
+  --shadow: 4px 4px 0 rgba(38, 34, 28, 0.35);
+  --shadow-md: 6px 6px 0 rgba(38, 34, 28, 0.35);
+  --shadow-lg: 8px 8px 0 rgba(38, 34, 28, 0.4);
+  --shadow-xl: 10px 10px 0 rgba(38, 34, 28, 0.45);
+  --shadow-float: 12px 12px 0 rgba(38, 34, 28, 0.5);
+  --shadow-inner: inset 2px 2px 0 rgba(0, 0, 0, 0.08);
+  --shadow-glow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.3);
+
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 36px;
+
+  --nav-bg: #ffffff;
+  --nav-border: #26221c;
+  --nav-active: #ffd400;
+  --nav-active-border: var(--color-primary);
+  --input-bg: #ffffff;
+  --overlay-bg: rgba(38, 34, 28, 0.4);
+
+  --board-bg: #ffedbe;
+  --board-grid-color: rgba(38, 34, 28, 0.08);
+  --board-grid-size: 20px;
+
+  --note-bg: #fff8e0;
+  --note-shadow: 3px 3px 0 rgba(38, 34, 28, 0.3);
+  --note-shadow-hover: 5px 5px 0 rgba(38, 34, 28, 0.35);
+  --note-shadow-float: 8px 8px 0 rgba(38, 34, 28, 0.4);
+  --note-shadow-drag: 10px 10px 0 rgba(38, 34, 28, 0.45);
+}
+
+html[data-app-style="pop"] body {
+  background-image:
+    radial-gradient(circle, rgba(38, 34, 28, 0.07) 1.5px, transparent 1.5px),
+    radial-gradient(circle, rgba(255, 46, 116, 0.08) 2px, transparent 2px);
+  background-size: 26px 26px, 26px 26px;
+  background-position: 0 0, 13px 13px;
+}
+
+html[data-app-style="pop"] .sidebar {
+  border-right: 3px solid #26221c;
+}
+
+html[data-app-style="pop"] .sidebar-btn {
+  border: 2px solid transparent;
+  transition: all var(--transition-spring);
+}
+
+html[data-app-style="pop"] .sidebar-btn:hover {
+  border-color: #26221c;
+  transform: rotate(-3deg) scale(1.05);
+}
+
+html[data-app-style="pop"] .sidebar-btn.active {
+  background: var(--nav-active);
+  color: #26221c;
+  border-color: #26221c;
+  box-shadow: 3px 3px 0 rgba(38, 34, 28, 0.4);
+  transform: rotate(-2deg);
+}
+
+html[data-app-style="pop"] .sidebar-btn.active::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid #26221c;
+}
+
+html[data-app-style="pop"] .card {
+  border: 3px solid #26221c;
+  box-shadow: var(--shadow);
+}
+
+html[data-app-style="pop"] .card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translate(-2px, -2px);
+}
+
+html[data-app-style="pop"] .btn {
+  border: 2px solid #26221c;
+  box-shadow: 3px 3px 0 rgba(38, 34, 28, 0.4);
+  transition: transform var(--transition-spring), box-shadow var(--transition-fast);
+}
+
+html[data-app-style="pop"] .btn:hover {
+  transform: translate(-1px, -1px) rotate(-1deg);
+  box-shadow: 5px 5px 0 rgba(38, 34, 28, 0.4);
+}
+
+html[data-app-style="pop"] .btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 rgba(38, 34, 28, 0.4);
+}
+
+html[data-app-style="pop"] .btn--primary {
+  background: var(--color-primary);
+}
+
+html[data-app-style="pop"] .btn--primary:hover {
+  background: var(--color-primary-hover);
+}
+
+html[data-app-style="pop"] .btn--ghost {
+  background: var(--card-bg);
+}
+
+html[data-app-style="pop"] .btn--success {
+  background: var(--color-success);
+}
+
+html[data-app-style="pop"] .btn--danger {
+  background: var(--color-danger);
+}
+
+html[data-app-style="pop"] .input {
+  border: 2px solid #26221c;
+  border-radius: var(--radius-sm);
+  box-shadow: inset 2px 2px 0 rgba(38, 34, 28, 0.06);
+}
+
+html[data-app-style="pop"] .input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.25);
+}
+
+html[data-app-style="pop"] .modal {
+  border: 3px solid #26221c;
+  box-shadow: var(--shadow-xl);
+}
+
+html[data-app-style="pop"] .modal-btn {
+  border: 2px solid #26221c;
+}
+
+html[data-app-style="pop"] .modal-btn-confirm {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+html[data-app-style="pop"] .toast {
+  border: 2px solid #26221c;
+  box-shadow: 4px 4px 0 rgba(38, 34, 28, 0.4);
+}
+
+html[data-app-style="pop"] .task-item {
+  border: 2px solid #26221c;
+  border-radius: var(--radius);
+  box-shadow: 3px 3px 0 rgba(38, 34, 28, 0.3);
+}
+
+html[data-app-style="pop"] .task-item:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 rgba(38, 34, 28, 0.35);
+}
+
+html[data-app-style="pop"] .task-toggle {
+  border: 2px solid #26221c;
+  background: var(--card-bg);
+}
+
+html[data-app-style="pop"] .task-toggle svg {
+  stroke-width: 3;
+}
+
+html[data-app-style="pop"] .home-note,
+html[data-app-style="pop"] .note {
+  border: 2px solid #26221c;
+  border-radius: var(--radius-xs);
+}
+
+html[data-app-style="pop"] .home-note::after,
+html[data-app-style="pop"] .note::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  border-style: solid;
+  border-width: 0 14px 14px 0;
+  border-color: transparent #26221c transparent transparent;
+}
+
+html[data-app-style="pop"] .pomo-timer-card {
+  border: 4px solid #26221c;
+  box-shadow: var(--shadow-lg);
+}
+
+html[data-app-style="pop"] .pomo-ctrl-btn {
+  border: 2px solid #26221c;
+  box-shadow: 3px 3px 0 rgba(38, 34, 28, 0.4);
+}
+
+html[data-app-style="pop"] .pomo-ctrl-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 rgba(38, 34, 28, 0.4);
+}
+
+html[data-app-style="pop"] .pomo-timer-progress {
+  height: 10px;
+  border: 2px solid #26221c;
+  background: var(--bg3);
+}
+
+html[data-app-style="pop"] .pomo-progress-bar {
+  border-radius: var(--radius-full);
+}
+
+html[data-app-style="pop"] .pomo-preset-btn {
+  border: 2px solid #26221c;
+  box-shadow: 2px 2px 0 rgba(38, 34, 28, 0.3);
+}
+
+html[data-app-style="pop"] .settings-select {
+  border: 2px solid #26221c;
+}
+
+html[data-app-style="pop"] .settings-cat-color {
+  border: 2px solid #26221c;
+}
+
+html[data-app-style="pop"] .home-date-nav,
+html[data-app-style="pop"] .home-todo-sec__head {
+  border-bottom: 3px solid #26221c;
+}
+
+html[data-app-style="pop"] .progress__bar {
+  border: 2px solid #26221c;
+  background: var(--bg3);
+}
+
+html[data-app-style="pop"] .progress__bar-fill {
+  border-radius: var(--radius-full);
+}
+
+html[data-app-style="pop"] .badge {
+  border: 1.5px solid #26221c;
+}
+
+html[data-app-style="pop"] .tag {
+  border: 1.5px solid #26221c;
+}
+
+html[data-app-style="pop"] .page-title {
+  position: relative;
+}
+
+html[data-app-style="pop"] .page-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  width: 64px;
+  height: 6px;
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
+}
+
+html[data-app-style="pop"] .settings-nav__item.active {
+  background: #ffd400;
+  border: 2px solid #26221c;
+  color: #26221c;
+  box-shadow: 3px 3px 0 rgba(38, 34, 28, 0.35);
+}
