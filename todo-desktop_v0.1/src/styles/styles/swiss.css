@@ -1,2 +1,327 @@
-/* 瑞士风格：网格排版、极简黑白红、无圆角、紧凑字距。
-   以 html[data-app-style="swiss"] 为作用域，覆盖 tokens 与组件外观。 */
+/* 瑞士风格：网格排版、极简黑白红、无圆角、扁平、高对比 */
+html[data-app-style="swiss"] {
+  --color-primary: #ff0000;
+  --color-primary-hover: #cc0000;
+  --color-primary-light: #ffe9e9;
+  --color-primary-lighter: #ffd6d6;
+  --color-primary-rgb: 255, 0, 0;
+  --color-success: #0066ff;
+  --color-success-hover: #0052cc;
+  --color-success-light: #e6f0ff;
+  --color-success-rgb: 0, 102, 255;
+  --color-danger: #ff0000;
+  --color-danger-hover: #cc0000;
+  --color-danger-light: #ffe9e9;
+  --color-danger-rgb: 255, 0, 0;
+  --color-warning: #ff6600;
+  --color-warning-hover: #cc5200;
+  --color-warning-light: #fff0e6;
+  --color-warning-rgb: 255, 102, 0;
+  --color-info: #0066ff;
+  --color-info-light: #e6f0ff;
+
+  --bg: #ffffff;
+  --bg2: #f4f4f4;
+  --bg3: #e8e8e8;
+  --card-bg: #ffffff;
+  --card-bg-hover: #fafafa;
+  --text: #111111;
+  --text-light: #555555;
+  --text-lighter: #999999;
+  --text-inverse: #ffffff;
+
+  --border: #111111;
+  --border-light: #d9d9d9;
+  --border-focus: var(--color-primary);
+
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-float: none;
+  --shadow-inner: none;
+  --shadow-glow: none;
+
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-full: 0;
+
+  --nav-bg: #ffffff;
+  --nav-border: #111111;
+  --nav-active: #ff0000;
+  --nav-active-border: #ff0000;
+  --input-bg: #ffffff;
+  --overlay-bg: rgba(17, 17, 17, 0.55);
+
+  --board-bg: #f4f4f4;
+  --board-grid-color: rgba(17, 17, 17, 0.1);
+  --board-grid-size: 20px;
+
+  --note-bg: #ffffff;
+  --note-shadow: none;
+  --note-shadow-hover: none;
+  --note-shadow-float: none;
+  --note-shadow-drag: none;
+}
+
+html[data-app-style="swiss"] {
+  letter-spacing: 0.01em;
+}
+
+html[data-app-style="swiss"] body {
+  background-image:
+    linear-gradient(rgba(17, 17, 17, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 17, 17, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+html[data-app-style="swiss"] .sidebar {
+  border-right: 2px solid #111111;
+}
+
+html[data-app-style="swiss"] .sidebar-btn {
+  border-radius: 0;
+  border-left: 4px solid transparent;
+  transition: none;
+}
+
+html[data-app-style="swiss"] .sidebar-btn:hover {
+  background: var(--bg2);
+}
+
+html[data-app-style="swiss"] .sidebar-btn.active {
+  background: #111111;
+  color: #ffffff;
+  border-left-color: var(--color-primary);
+}
+
+html[data-app-style="swiss"] .sidebar-btn.active::before {
+  display: none;
+}
+
+html[data-app-style="swiss"] .card {
+  border: 1px solid #111111;
+  border-radius: 0;
+}
+
+html[data-app-style="swiss"] .card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .btn {
+  border: 2px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+  transition: none;
+}
+
+html[data-app-style="swiss"] .btn:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .btn:active {
+  transform: none;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .btn--primary {
+  background: #111111;
+  color: #ffffff;
+}
+
+html[data-app-style="swiss"] .btn--primary:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+html[data-app-style="swiss"] .btn--success {
+  background: #111111;
+  color: #ffffff;
+}
+
+html[data-app-style="swiss"] .btn--success:hover {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+
+html[data-app-style="swiss"] .btn--danger {
+  background: #111111;
+  color: #ffffff;
+}
+
+html[data-app-style="swiss"] .btn--danger:hover {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+html[data-app-style="swiss"] .btn--ghost {
+  background: #ffffff;
+}
+
+html[data-app-style="swiss"] .btn--ghost:hover {
+  background: var(--bg2);
+}
+
+html[data-app-style="swiss"] .input {
+  border: 2px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .input:focus {
+  border-color: var(--color-primary);
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .modal {
+  border: 2px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .modal-btn {
+  border-radius: 0;
+  border: 2px solid #111111;
+}
+
+html[data-app-style="swiss"] .modal-btn-confirm {
+  background: #111111;
+  color: #ffffff;
+}
+
+html[data-app-style="swiss"] .toast {
+  border: 2px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .task-item {
+  border: 1px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .task-item:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--bg2);
+}
+
+html[data-app-style="swiss"] .task-toggle {
+  border: 2px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+html[data-app-style="swiss"] .task-toggle svg {
+  stroke-width: 2.5;
+}
+
+html[data-app-style="swiss"] .home-note,
+html[data-app-style="swiss"] .note {
+  border: 1px solid #111111;
+  border-radius: 0;
+}
+
+html[data-app-style="swiss"] .home-note::after,
+html[data-app-style="swiss"] .note::after {
+  display: none;
+}
+
+html[data-app-style="swiss"] .pomo-timer-card {
+  border: 3px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .pomo-ctrl-btn {
+  border-radius: 0;
+  border: 2px solid #111111;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .pomo-ctrl-btn:active {
+  transform: none;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .pomo-timer-progress {
+  height: 8px;
+  border: 2px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+html[data-app-style="swiss"] .pomo-progress-bar {
+  border-radius: 0;
+  background: #111111;
+}
+
+html[data-app-style="swiss"] .pomo-preset-btn {
+  border: 2px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .settings-select {
+  border: 2px solid #111111;
+  border-radius: 0;
+}
+
+html[data-app-style="swiss"] .settings-cat-color {
+  border: 2px solid #111111;
+  border-radius: 0;
+}
+
+html[data-app-style="swiss"] .progress__bar {
+  border: 2px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+html[data-app-style="swiss"] .progress__bar-fill {
+  border-radius: 0;
+}
+
+html[data-app-style="swiss"] .badge {
+  border: 1px solid #111111;
+  border-radius: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+html[data-app-style="swiss"] .tag {
+  border: 1px solid #111111;
+  border-radius: 0;
+}
+
+html[data-app-style="swiss"] .page-title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+html[data-app-style="swiss"] .page-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  width: 48px;
+  height: 8px;
+  background: var(--color-primary);
+}
+
+html[data-app-style="swiss"] .settings-nav__item.active {
+  background: #111111;
+  border-radius: 0;
+  color: #ffffff;
+  box-shadow: none;
+}

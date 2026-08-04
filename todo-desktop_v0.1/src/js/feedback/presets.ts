@@ -185,4 +185,72 @@ export const FEEDBACK_STYLES: Record<string, StyleFeedbackMap> = {
       },
     },
   },
+  swiss: {
+    'task-done': {
+      sound: {
+        kind: 'tones',
+        tones: [{ freq: 880, start: 0, dur: 0.08, vol: 0.14 }],
+        oscType: 'sine',
+      },
+      particles: { kind: 'burst', count: 8 },
+    },
+    'task-done-inhale': {
+      sound: {
+        kind: 'tones',
+        tones: [{ freq: 880, start: 0, dur: 0.08, vol: 0.14 }],
+        oscType: 'sine',
+      },
+      particles: { kind: 'inhale', count: 20 },
+    },
+    'step-tick': {
+      sound: { kind: 'slide', slide: { from: 1000, to: 800, dur: 0.06, vol: 0.05 } },
+      particles: { kind: 'burst', count: 4 },
+    },
+    'pomo-done': {
+      sound: {
+        kind: 'tones',
+        tones: [
+          { freq: 880, start: 0, dur: 0.3, vol: 0.3 },
+          { freq: 1174.66, start: 0.2, dur: 0.3, vol: 0.3 },
+          { freq: 1567.98, start: 0.4, dur: 0.5, vol: 0.32 },
+        ],
+        oscType: 'sine',
+      },
+      particles: { kind: 'confetti', count: 60 },
+    },
+    'goal-reached': {
+      sound: {
+        kind: 'tones',
+        tones: [
+          { freq: 880, start: 0, dur: 0.25, vol: 0.3 },
+          { freq: 1174.66, start: 0.2, dur: 0.25, vol: 0.3 },
+          { freq: 1567.98, start: 0.4, dur: 0.5, vol: 0.32 },
+        ],
+        oscType: 'sine',
+      },
+      particles: { kind: 'confetti', count: 90 },
+      flash: true,
+    },
+    'milestone': {
+      sound: {
+        kind: 'tones',
+        tones: [
+          { freq: 1046.5, start: 0, dur: 0.1, vol: 0.22 },
+          { freq: 1318.5, start: 0.12, dur: 0.14, vol: 0.24 },
+        ],
+        oscType: 'sine',
+      },
+      particles: { kind: 'confetti', count: 40 },
+    },
+    'lock-warn': {
+      sound: {
+        kind: 'tones',
+        tones: [
+          { freq: 440, start: 0, dur: 0.12, vol: 0.2 },
+          { freq: 330, start: 0.16, dur: 0.2, vol: 0.2 },
+        ],
+        oscType: 'sine',
+      },
+    },
+  },
 };
