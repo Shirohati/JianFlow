@@ -325,3 +325,273 @@ html[data-app-style="swiss"] .settings-nav__item.active {
   color: #ffffff;
   box-shadow: none;
 }
+
+/* ===== 首页：排版驱动 ===== */
+html[data-app-style="swiss"] .home-date-nav {
+  border-bottom: 4px solid #111111;
+  padding: var(--space-3) 0;
+  margin-bottom: var(--space-4);
+  border-radius: 0;
+}
+
+html[data-app-style="swiss"] .home-date-text {
+  font-size: var(--text-2xl);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+
+html[data-app-style="swiss"] .home-stats-badge,
+html[data-app-style="swiss"] .home-time-badge {
+  background: #111111;
+  color: #ffffff;
+  border-radius: 0;
+  padding: var(--space-1) var(--space-3);
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+html[data-app-style="swiss"] .home-stats-badge span,
+html[data-app-style="swiss"] .home-time-badge span {
+  color: var(--color-primary);
+}
+
+html[data-app-style="swiss"] .home-date-clickable:hover {
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+/* ===== 首页：任务列表 ===== */
+html[data-app-style="swiss"] .home-section-title {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+}
+
+html[data-app-style="swiss"] .home-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: var(--color-primary);
+  margin-right: var(--space-2);
+}
+
+html[data-app-style="swiss"] .task-item {
+  border: none;
+  border-bottom: 1px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+html[data-app-style="swiss"] .task-item:hover {
+  background: var(--bg2);
+  transform: none;
+}
+
+html[data-app-style="swiss"] .task-completed .task-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+html[data-app-style="swiss"] .task-toggle {
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-app-style="swiss"] .task-item--important {
+  border-left: 6px solid var(--color-primary);
+  background: transparent;
+}
+
+html[data-app-style="swiss"] .home-add-area {
+  border-bottom: 2px solid #111111;
+  padding-bottom: var(--space-3);
+}
+
+/* ===== 首页：折叠面板 ===== */
+html[data-app-style="swiss"] .fold-panel {
+  border: none;
+  border-top: 3px solid #111111;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .fold-panel__header {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: var(--text-sm);
+}
+
+/* ===== 首页：日程时间轴 ===== */
+html[data-app-style="swiss"] .home-timeline-rail {
+  border-left: 2px solid #111111;
+}
+
+html[data-app-style="swiss"] .home-tl-tick {
+  width: 10px;
+  background: #111111;
+}
+
+html[data-app-style="swiss"] .home-tl-label {
+  font-weight: 700;
+  opacity: 1;
+}
+
+html[data-app-style="swiss"] .home-tl-block {
+  border-radius: 0;
+  border: 1px solid #111111;
+}
+
+html[data-app-style="swiss"] .home-sidebar__header {
+  border-bottom: 2px solid #111111;
+}
+
+html[data-app-style="swiss"] .home-sidebar__title {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: var(--text-xs);
+}
+
+/* ===== 番茄钟 ===== */
+html[data-app-style="swiss"] .pomo-timer-card {
+  position: relative;
+  overflow: hidden;
+  border-top: none;
+}
+
+html[data-app-style="swiss"] .pomo-timer-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: var(--color-primary);
+}
+
+html[data-app-style="swiss"] .pomo-timer-type {
+  color: #ffffff !important;
+  background: var(--color-primary);
+  display: inline-block;
+  padding: var(--space-1) var(--space-3);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: var(--text-xs);
+}
+
+html[data-app-style="swiss"] .pomo-timer-display {
+  font-size: 6rem;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  color: #111111;
+  margin: var(--space-4) 0;
+}
+
+html[data-app-style="swiss"] .pomo-timer--paused {
+  color: var(--color-primary);
+  animation: none;
+}
+
+html[data-app-style="swiss"] .pomo-ctrl-btn {
+  border-radius: 0;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+html[data-app-style="swiss"] .pomo-presets-label {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* ===== 便签板 ===== */
+html[data-app-style="swiss"] .note {
+  border: 1px solid #111111;
+  border-left: 4px solid var(--note-color, #111111);
+  background: #ffffff;
+}
+
+html[data-app-style="swiss"] .note::after {
+  display: none;
+}
+
+html[data-app-style="swiss"] .note--open {
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .note:hover {
+  box-shadow: none;
+  border-color: var(--color-primary);
+}
+
+html[data-app-style="swiss"] .home-note--floating {
+  background: #ffffff;
+  border: 1px solid #111111;
+  border-radius: 0;
+}
+
+html[data-app-style="swiss"] .home-note--floating::after {
+  display: none;
+}
+
+/* ===== 迷你日历 ===== */
+html[data-app-style="swiss"] .mini-calendar {
+  border: 2px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .mini-calendar__day--current {
+  background: #111111;
+  color: #ffffff;
+}
+
+/* ===== 设置页 ===== */
+html[data-app-style="swiss"] .settings-section-title {
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: var(--text-sm);
+}
+
+html[data-app-style="swiss"] .settings-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background: var(--color-primary);
+  margin-right: var(--space-2);
+}
+
+html[data-app-style="swiss"] .settings-row {
+  border-bottom: 1px solid var(--border-light);
+}
+
+html[data-app-style="swiss"] .quote-block {
+  border: 2px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-app-style="swiss"] .report-stat {
+  border: 1px solid #111111;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+html[data-app-style="swiss"] .pomo-goal-card,
+html[data-app-style="swiss"] .pomo-quote-card,
+html[data-app-style="swiss"] .pomo-countdown-card,
+html[data-app-style="swiss"] .pomo-today-card {
+  border: 1px solid #111111;
+  border-radius: 0;
+  box-shadow: none;
+  background: #ffffff;
+}

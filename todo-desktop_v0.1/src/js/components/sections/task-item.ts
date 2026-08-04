@@ -26,7 +26,7 @@ export function renderTaskItem(t: TaskItem, allTasks: TaskItem[], categories: Ca
   const stepsOpen = state.stepsOpen;
   return `
     <div class="task-wrap${stepsOpen ? ' task-wrap--open' : ''}" data-id="${t.id}">
-    <div class="task-item ${isCompleted ? 'task-completed' : ''} ${isImportant ? 'task-item--important' : ''}" data-id="${t.id}">
+    <div class="task-item ${isCompleted ? 'task-completed' : ''} ${isImportant ? 'task-item--important' : ''}" data-id="${t.id}" style="--cat-color:${catColor}">
       <button class="task-toggle" data-id="${t.id}">
         ${isCompleted ? icon('check-circle-2', 'size="20"') : icon('circle', 'size="20"')}
       </button>

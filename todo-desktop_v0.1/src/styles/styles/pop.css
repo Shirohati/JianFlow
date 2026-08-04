@@ -306,3 +306,339 @@ html[data-app-style="pop"] .settings-nav__item.active {
   color: #26221c;
   box-shadow: 3px 3px 0 rgba(38, 34, 28, 0.35);
 }
+
+/* ===== 首页：日期横幅 ===== */
+html[data-app-style="pop"] .home-date-nav {
+  background: #ffd400;
+  border: 3px solid #26221c;
+  border-radius: var(--radius-lg);
+  box-shadow: 6px 6px 0 rgba(38, 34, 28, 0.4);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+html[data-app-style="pop"] .home-date-nav .btn--icon {
+  background: #ffffff;
+}
+
+html[data-app-style="pop"] .home-date-text {
+  font-size: var(--text-2xl);
+  color: #26221c;
+}
+
+html[data-app-style="pop"] .home-date-clickable:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+html[data-app-style="pop"] .home-stats-badge {
+  background: var(--color-primary);
+  color: #ffffff;
+  border: 2px solid #26221c;
+  box-shadow: 2px 2px 0 rgba(38, 34, 28, 0.35);
+}
+
+html[data-app-style="pop"] .home-time-badge {
+  background: var(--color-info);
+  color: #ffffff;
+  border: 2px solid #26221c;
+  box-shadow: 2px 2px 0 rgba(38, 34, 28, 0.35);
+}
+
+/* ===== 首页：任务列表 ===== */
+html[data-app-style="pop"] .home-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid #26221c;
+  margin-right: var(--space-2);
+}
+
+html[data-app-style="pop"] .task-item {
+  position: relative;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+
+html[data-app-style="pop"] .task-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background: var(--cat-color, #8e8e8e);
+  border-right: 2px solid #26221c;
+}
+
+html[data-app-style="pop"] .task-item.task-completed {
+  background: #f7f2e3;
+}
+
+html[data-app-style="pop"] .task-completed .task-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 3px;
+  text-decoration-color: var(--color-primary);
+}
+
+html[data-app-style="pop"] .task-toggle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+html[data-app-style="pop"] .task-completed .task-toggle {
+  background: var(--color-success);
+  border-color: #26221c;
+}
+
+html[data-app-style="pop"] .task-completed .task-toggle svg {
+  color: #ffffff;
+}
+
+html[data-app-style="pop"] .task-item--important {
+  background: #fff3c4;
+}
+
+html[data-app-style="pop"] .task-steps-btn--open {
+  background: var(--color-primary);
+  border: 2px solid #26221c;
+  color: #ffffff;
+}
+
+/* ===== 首页：折叠面板与日志 ===== */
+html[data-app-style="pop"] .fold-panel {
+  border: 3px solid #26221c;
+  border-radius: var(--radius);
+  box-shadow: 4px 4px 0 rgba(38, 34, 28, 0.35);
+  background: var(--card-bg);
+}
+
+html[data-app-style="pop"] .fold-panel__header {
+  font-weight: var(--weight-bold);
+}
+
+/* ===== 首页：日程时间轴 ===== */
+html[data-app-style="pop"] .home-timeline-rail {
+  border-left: 6px solid #26221c;
+  margin-left: 6px;
+}
+
+html[data-app-style="pop"] .home-tl-tick {
+  width: 14px;
+  height: 3px;
+  background: #26221c;
+}
+
+html[data-app-style="pop"] .home-tl-label {
+  font-weight: var(--weight-bold);
+  opacity: 1;
+}
+
+html[data-app-style="pop"] .home-tl-block {
+  border-radius: var(--radius-full);
+  border: 2px solid #26221c;
+}
+
+html[data-app-style="pop"] .home-sidebar__title {
+  font-weight: var(--weight-bold);
+}
+
+/* ===== 番茄钟：圆形表盘 ===== */
+html[data-app-style="pop"] .pomo-timer-type {
+  background: var(--color-primary);
+  color: #ffffff !important;
+  border: 2px solid #26221c;
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-5);
+  display: inline-block;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+html[data-app-style="pop"] .pomo-timer-display {
+  font-size: 4.2rem;
+  font-weight: 900;
+  color: #26221c;
+  background: #ffffff;
+  border: 6px solid #26221c;
+  border-radius: 50%;
+  width: 280px;
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: var(--space-4) auto;
+  box-shadow:
+    10px 10px 0 rgba(38, 34, 28, 0.4),
+    0 0 0 8px var(--color-primary),
+    0 0 0 10px #26221c;
+  position: relative;
+}
+
+html[data-app-style="pop"] .pomo-timer-display::before {
+  content: '';
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  border: 2px solid #26221c;
+}
+
+html[data-app-style="pop"] .pomo-timer--paused {
+  color: #26221c;
+}
+
+html[data-app-style="pop"] .pomo-ctrl-btn {
+  border-radius: var(--radius-full);
+  font-weight: 700;
+}
+
+/* ===== 便签板 ===== */
+html[data-app-style="pop"] .note {
+  border: 2px solid #26221c;
+  background: #fff8e0;
+}
+
+html[data-app-style="pop"] .note::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -9px;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  border: 2px solid #26221c;
+  box-shadow: 1px 2px 0 rgba(0, 0, 0, 0.2);
+  z-index: 2;
+  pointer-events: none;
+}
+
+html[data-app-style="pop"] .note--open::before {
+  display: none;
+}
+
+html[data-app-style="pop"] .home-note--floating {
+  background: #fff8e0;
+  border: 2px solid #26221c;
+  border-radius: var(--radius-xs);
+}
+
+html[data-app-style="pop"] .home-note--floating::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -9px;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid #26221c;
+  box-shadow: 1px 2px 0 rgba(0, 0, 0, 0.2);
+  z-index: 2;
+  pointer-events: none;
+}
+
+html[data-app-style="pop"] .home-note--open::before {
+  display: none;
+}
+
+/* ===== 迷你日历与弹层 ===== */
+html[data-app-style="pop"] .mini-calendar {
+  border: 3px solid #26221c;
+  box-shadow: 6px 6px 0 rgba(38, 34, 28, 0.4);
+}
+
+html[data-app-style="pop"] .mini-calendar__day--current {
+  border: 2px solid #26221c;
+}
+
+html[data-app-style="pop"] .settings-section-title {
+  font-weight: 800;
+}
+
+html[data-app-style="pop"] .settings-section-title::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid #26221c;
+  margin-right: var(--space-2);
+}
+
+html[data-app-style="pop"] .quote-block {
+  border: 3px solid #26221c;
+  border-radius: var(--radius-lg);
+  box-shadow: 5px 5px 0 rgba(38, 34, 28, 0.35);
+}
+
+html[data-app-style="pop"] .report-stat {
+  border: 3px solid #26221c;
+  box-shadow: 4px 4px 0 rgba(38, 34, 28, 0.35);
+}
+
+html[data-app-style="pop"] .pomo-goal-card,
+html[data-app-style="pop"] .pomo-quote-card,
+html[data-app-style="pop"] .pomo-countdown-card,
+html[data-app-style="pop"] .pomo-today-card {
+  border: 2px solid #26221c;
+  box-shadow: 4px 4px 0 rgba(38, 34, 28, 0.35);
+}
+
+html[data-app-style="pop"] .home-sidebar__header {
+  border-bottom: 3px solid #26221c;
+  padding-bottom: var(--space-2);
+}
+
+/* ===== 波普动画 ===== */
+html[data-app-style="pop"] .sidebar-btn svg {
+  transition: transform var(--transition-spring);
+}
+
+html[data-app-style="pop"] .sidebar-btn:hover svg {
+  transform: rotate(-15deg) scale(1.15);
+}
+
+html[data-app-style="pop"] .task-item:hover {
+  animation: popWiggle 0.3s ease-in-out;
+}
+
+@keyframes popWiggle {
+  0% { transform: rotate(0deg); }
+  33% { transform: rotate(-0.8deg); }
+  66% { transform: rotate(0.6deg); }
+  100% { transform: rotate(0deg); }
+}
+
+html[data-app-style="pop"] .pomo-timer-display {
+  animation: popBreath 3s ease-in-out infinite;
+}
+
+@keyframes popBreath {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.015); }
+}
+
+html[data-app-style="pop"] .pomo-layout--running .pomo-timer-display {
+  animation: popBeat 1s ease-in-out infinite;
+}
+
+@keyframes popBeat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
