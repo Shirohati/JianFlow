@@ -78,17 +78,16 @@ export const reportPage = {
           <div id="reportStreak" class="report-streak"></div>
         </div>
 
-        <div class="report-card report-card--span2">
+        <div class="report-card">
           <div class="report-card__header">
-            <span class="report-card__title">${icon('calendar-days', 'size="14"')} 每周课程表</span>
+            <span class="report-card__title">${icon('trending-up', 'size="14"')} 月度时长趋势</span>
             <div class="report-period-nav">
-              <button class="btn btn--ghost btn--sm" id="rptTTPrev">${icon('chevron-left', 'size="14"')}</button>
-              <button class="btn btn--sm" id="rptTTToday">本周</button>
-              <button class="btn btn--ghost btn--sm" id="rptTTNext">${icon('chevron-right', 'size="14"')}</button>
-              <span id="rptTTRange" class="report-period-range"></span>
+              <button class="btn btn--ghost btn--sm" id="rptMonthPrev">${icon('chevron-left', 'size="14"')}</button>
+              <span id="rptMonthRange" class="report-period-range"></span>
+              <button class="btn btn--ghost btn--sm" id="rptMonthNext">${icon('chevron-right', 'size="14"')}</button>
             </div>
           </div>
-          <div class="report-timetable" id="reportTimetable"></div>
+          <div class="report-line-chart" id="reportMonthTrend"></div>
         </div>
 
         <div class="report-card report-card--span2">
@@ -113,6 +112,19 @@ export const reportPage = {
 
         <div class="report-card report-card--span2">
           <div class="report-card__header">
+            <span class="report-card__title">${icon('calendar-days', 'size="14"')} 每周课程表</span>
+            <div class="report-period-nav">
+              <button class="btn btn--ghost btn--sm" id="rptTTPrev">${icon('chevron-left', 'size="14"')}</button>
+              <button class="btn btn--sm" id="rptTTToday">本周</button>
+              <button class="btn btn--ghost btn--sm" id="rptTTNext">${icon('chevron-right', 'size="14"')}</button>
+              <span id="rptTTRange" class="report-period-range"></span>
+            </div>
+          </div>
+          <div class="report-timetable" id="reportTimetable"></div>
+        </div>
+
+        <div class="report-card report-card--span2">
+          <div class="report-card__header">
             <span class="report-card__title">${icon('bar-chart', 'size="14"')} 月度专注时段分布</span>
             <div class="report-period-nav">
               <button class="btn btn--ghost btn--sm" id="rptHourPrev">${icon('chevron-left', 'size="14"')}</button>
@@ -121,18 +133,6 @@ export const reportPage = {
             </div>
           </div>
           <div class="report-bar-chart" id="reportHourDist"></div>
-        </div>
-
-        <div class="report-card report-card--span2">
-          <div class="report-card__header">
-            <span class="report-card__title">${icon('trending-up', 'size="14"')} 月度时长趋势</span>
-            <div class="report-period-nav">
-              <button class="btn btn--ghost btn--sm" id="rptMonthPrev">${icon('chevron-left', 'size="14"')}</button>
-              <span id="rptMonthRange" class="report-period-range"></span>
-              <button class="btn btn--ghost btn--sm" id="rptMonthNext">${icon('chevron-right', 'size="14"')}</button>
-            </div>
-          </div>
-          <div class="report-line-chart" id="reportMonthTrend"></div>
         </div>
 
         <div class="report-card report-card--span2">
