@@ -1,12 +1,8 @@
 import { store } from '../store';
 import { statsApi, timeRecordApi, timeTypeApi } from '../api';
 import { utils } from '../utils';
-import { initIcons } from '../icons';
+import { initIcons, icon } from '../icons';
 import type { TimeRecord, TimeType } from '../api';
-
-function icon(name: string, attrs: string = ''): string {
-  return `<i data-lucide="${name}" ${attrs}></i>`;
-}
 
 function formatMin(m: number): string {
   if (m < 60) return m + 'm';

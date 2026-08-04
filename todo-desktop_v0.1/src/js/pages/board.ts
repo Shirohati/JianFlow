@@ -1,15 +1,11 @@
 import { store } from '../store';
 import { taskApi, categoryApi, connectionApi, settingsApi } from '../api';
 import { utils } from '../utils';
-import { initIcons } from '../icons';
+import { initIcons, icon } from '../icons';
 import { history } from '../history';
 import { toast } from '../components/toast';
 import type { TaskItem, Category, Connection, AppSettings } from '../api';
 import { feedbackSound, feedbackBurst } from '../feedback';
-
-function icon(name: string, attrs: string = ''): string {
-  return `<i data-lucide="${name}" ${attrs}></i>`;
-}
 
 const GRID = 20;
 const NW = 210;

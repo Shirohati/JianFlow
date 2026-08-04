@@ -1,13 +1,9 @@
 import { store } from '../store';
 import { settingsApi, categoryApi, statsApi, timeRecordApi, timeTypeApi, presetApi, goalApi, countdownApi } from '../api';
-import { initIcons } from '../icons';
+import { initIcons, icon } from '../icons';
 import { toast } from '../components/toast';
 import { utils } from '../utils';
 import type { AppSettings, Category, TimeType, PomodoroPreset, Goal, Countdown } from '../api';
-
-function icon(name: string, attrs: string = ''): string {
-  return `<i data-lucide="${name}" ${attrs}></i>`;
-}
 
 export const settingsPage = {
   async init(): Promise<void> {

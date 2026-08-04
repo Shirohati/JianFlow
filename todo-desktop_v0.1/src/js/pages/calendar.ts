@@ -1,12 +1,8 @@
 import { timeRecordApi, taskApi } from '../api';
 import { store } from '../store';
 import { utils } from '../utils';
-import { initIcons } from '../icons';
+import { initIcons, icon } from '../icons';
 import { router } from '../router';
-
-function icon(name: string, attrs: string = ''): string {
-  return `<i data-lucide="${name}" ${attrs}></i>`;
-}
 
 function formatMin(m: number): string {
   if (m < 60) return m + 'm';

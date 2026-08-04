@@ -1,16 +1,12 @@
 import { store } from '../store';
 import { presetApi, timeRecordApi, timeTypeApi, goalApi, countdownApi, settingsApi, lockApi, type ForegroundInfo } from '../api';
 import { utils } from '../utils';
-import { initIcons } from '../icons';
+import { initIcons, icon } from '../icons';
 import { toast } from '../components/toast';
 import type { PomodoroPreset, TimeType, Goal, Countdown, AppSettings, TimeRecord } from '../api';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { feedbackSound, feedbackBurst, feedbackFlash } from '../feedback';
-
-function icon(name: string, attrs: string = ''): string {
-  return `<i data-lucide="${name}" ${attrs}></i>`;
-}
 
 interface PomoState {
   running: boolean;

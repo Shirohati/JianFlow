@@ -2,14 +2,10 @@
 import { router } from '../router';
 import { taskApi, categoryApi, dailyLogApi, settingsApi, timeRecordApi } from '../api';
 import { utils } from '../utils';
-import { initIcons } from '../icons';
+import { initIcons, icon } from '../icons';
 import { toast } from '../components/toast';
 import type { TaskItem, Category, AppSettings } from '../api';
 import { feedbackSound, feedbackBurst } from '../feedback';
-
-function icon(name: string, attrs: string = ''): string {
-  return `<i data-lucide="${name}" ${attrs}></i>`;
-}
 
 const debounceSaveLog = utils.debounce(() => {
   const textarea = document.querySelector('.home-daily-log') as HTMLTextAreaElement | null;
