@@ -89,12 +89,26 @@ function buildLockEntriesHTML(): string {
   `;
 }
 
+function applyLockStyle(overlay: HTMLElement): void {
+  const s = store.get<AppSettings>('settings');
+  const style = s?.pomodoro_lock_style || 'default';
+  overlay.classList.remove('pomo-lock-overlay--pop', 'pomo-lock-overlay--swiss', 'pomo-lock-overlay--industrial');
+  if (style === 'pop') {
+    overlay.classList.add('pomo-lock-overlay--pop');
+  } else if (style === 'swiss') {
+    overlay.classList.add('pomo-lock-overlay--swiss');
+  } else if (style === 'industrial') {
+    overlay.classList.add('pomo-lock-overlay--industrial');
+  }
+}
+
 function buildLockOverlay(): HTMLElement {
   const existing = document.getElementById('pomoLockOverlay');
   if (existing) return existing;
   const overlay = document.createElement('div');
   overlay.id = 'pomoLockOverlay';
   overlay.className = 'pomo-lock-overlay';
+  applyLockStyle(overlay);
   overlay.innerHTML = `
     <div class="pomo-lock-bg" aria-hidden="true">
       <div class="pomo-lock-bg__orb pomo-lock-bg__orb--a"></div>
@@ -149,8 +163,32 @@ function buildLockOverlay(): HTMLElement {
 const BROWSER_EXES = ['chrome.exe', 'msedge.exe', 'firefox.exe', '360chrome.exe', '360se.exe', 'qqbrowser.exe', 'sogouexplorer.exe', 'brave.exe', 'opera.exe', 'vivaldi.exe', 'centbrowser.exe', 'maxthon.exe', 'world.exe', 'iexplore.exe', 'seamonkey.exe'];
 
 // 必要系统窗口：这些是操作系统的核心交互界面，不应被锁机拦截
-const SYSTEM_EXES = ['explorer.exe', 'taskmgr.exe', 'dwm.exe', 'startmenuexperiencehost.exe', 'shellexperiencehost.exe', 'lockapp.exe', 'applicationframehost.exe', 'searchapp.exe', 'microsoft.ui.xaml.app.exe'];
-const SYSTEM_TITLES = ['program manager', '任务管理器', 'windows 桌面', 'task manager', '开始', 'start'];
+const SYSTEM_EXES = [
+  // 内核与会话基础
+  'csrss.exe', 'winlogon.exe', 'wininit.exe', 'lsass.exe', 'lsaiso.exe', 'services.exe', 'smss.exe', 'svchost.exe',
+  // 控制台与宿主进程
+  'conhost.exe', 'dllhost.exe', 'fontdrvhost.exe', 'usermodefontdrvhost.exe', 'taskhost.exe', 'taskhostw.exe', 'taskhostex.exe',
+  // Shell 与 UX
+  'sihost.exe', 'systemsettings.exe', 'textinputhost.exe', 'ctfmon.exe', 'searchhost.exe', 'searchapp.exe',
+  'runtimebroker.exe', 'widgetex.exe', 'widgetservice.exe', 'gamebar.exe', 'gamebarpresencewriter.exe',
+  'securityhealthsystray.exe', 'securityhealthservice.exe',
+  // 桌面与窗口管理
+  'explorer.exe', 'dwm.exe', 'taskmgr.exe', 'startmenuexperiencehost.exe', 'shellexperiencehost.exe',
+  'lockapp.exe', 'applicationframehost.exe', 'microsoft.ui.xaml.app.exe', 'windows.internal.shell.admin.app.exe',
+  // 安全桌面 / UAC
+  'consent.exe',
+  // 系统托盘气泡与通知
+  'notificationcontroller.exe',
+];
+// 系统装饰/遮罩窗口类：不承载任何内容，放行后真实窗口会再次触发前台事件做最终判定
+const SYSTEM_CLASSES = [
+  'dialogblockwindow',        // 模态对话框遮罩（dwm 对话框管理器创建）
+  'sysshadow',                // 窗口阴影
+  'tooltips_class32',         // 工具提示
+  'notifyiconoverflowwindow', // 托盘溢出区
+  'dummy_dwm_manager_window', // DWM 空管理窗口
+];
+const SYSTEM_TITLES = ['program manager', '任务管理器', 'windows 桌面', 'task manager', '开始', 'start', 'secure desktop', '安全桌面'];
 
 function isOwnWindow(info: ForegroundInfo): boolean {
   const exe = (info.exe || '').trim().toLowerCase();
@@ -160,7 +198,9 @@ function isOwnWindow(info: ForegroundInfo): boolean {
 function isSystemWindow(info: ForegroundInfo): boolean {
   const title = (info.title || '').trim().toLowerCase();
   const exe = (info.exe || '').trim().toLowerCase();
+  const cls = (info.class || '').trim().toLowerCase();
   if (SYSTEM_EXES.includes(exe)) return true;
+  if (SYSTEM_CLASSES.includes(cls)) return true;
   return SYSTEM_TITLES.some(t => title.includes(t));
 }
 
@@ -172,7 +212,8 @@ function isForegroundAllowed(info: ForegroundInfo): boolean {
   const exe = (info.exe || '').trim().toLowerCase();
   // 系统窗口（桌面/任务管理器等）始终放行
   if (isSystemWindow(info)) return true;
-  if (title.length === 0 && exe.length === 0) return false;
+  // 无任何标识信息的窗口（多为系统内部装饰窗口）：放行，交由后续前台事件判定
+  if (title.length === 0 && exe.length === 0) return true;
   const entries = parseLockEntries(whitelist);
   return entries.some(e => {
     const v = e.value.toLowerCase();
@@ -240,7 +281,7 @@ function checkForeground(info: ForegroundInfo): void {
 }
 
 async function pollForeground(): Promise<void> {
-  const info = await lockApi.foreground().catch(() => ({ title: '', exe: '' }));
+  const info = await lockApi.foreground().catch(() => ({ title: '', exe: '', class: '' }));
   checkForeground(info);
 }
 

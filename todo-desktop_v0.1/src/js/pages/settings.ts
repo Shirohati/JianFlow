@@ -79,6 +79,15 @@ export const settingsPage = {
             <option value="24" ${settings.note_spacing === 24 ? 'selected' : ''}>宽松 (24px)</option>
           </select>
         </div>
+        <div class="settings-row">
+          <span class="settings-label">锁机界面风格</span>
+          <select class="input settings-select" data-key="pomodoro_lock_style">
+            <option value="default" ${(settings.pomodoro_lock_style || 'default') === 'default' ? 'selected' : ''}>默认（玻璃拟态）</option>
+            <option value="pop" ${settings.pomodoro_lock_style === 'pop' ? 'selected' : ''}>波普艺术</option>
+            <option value="swiss" ${settings.pomodoro_lock_style === 'swiss' ? 'selected' : ''}>瑞士国际主义</option>
+            <option value="industrial" ${settings.pomodoro_lock_style === 'industrial' ? 'selected' : ''}>工业风</option>
+          </select>
+        </div>
       </div>
 
       <div class="settings-section">

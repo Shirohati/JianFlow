@@ -14,6 +14,7 @@ static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 pub struct ForegroundInfo {
     pub title: String,
     pub exe: String,
+    pub class: String,
 }
 
 #[cfg(target_os = "windows")]
@@ -33,7 +34,7 @@ mod imp {
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         BringWindowToTop, CallNextHookEx, DispatchMessageW, EnumWindows, EVENT_SYSTEM_FOREGROUND,
-        FindWindowW, GetForegroundWindow, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
+        FindWindowW, GetClassNameW, GetForegroundWindow, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
         IsWindowVisible, KBDLLHOOKSTRUCT, MSG, PostThreadMessageW, SetForegroundWindow,
         SetWindowsHookExW, ShowWindow, SW_HIDE, SW_RESTORE, SW_SHOW, TranslateMessage, UnhookWindowsHookEx,
         WH_KEYBOARD_LL, WINEVENT_OUTOFCONTEXT, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN,
@@ -102,6 +103,17 @@ mod imp {
         }
     }
 
+    fn class_of(hwnd: HWND) -> String {
+        unsafe {
+            let mut buf = [0u16; 256];
+            let len = GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+            if len <= 0 {
+                return String::new();
+            }
+            String::from_utf16_lossy(&buf[..len as usize]).trim().to_string()
+        }
+    }
+
     unsafe extern "system" fn kbd_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         if code >= 0 && super::is_locked() && !super::is_yielded() {
             let kb = &*(lparam as *const KBDLLHOOKSTRUCT);
@@ -140,6 +152,7 @@ mod imp {
         let info = ForegroundInfo {
             title: title_of(hwnd),
             exe: exe_of(hwnd),
+            class: class_of(hwnd),
         };
         if let Some(app) = APP_HANDLE.get() {
             let _ = app.emit("pomo://foreground", info);
@@ -211,11 +224,12 @@ mod imp {
         unsafe {
             let hwnd = GetForegroundWindow();
             if hwnd.is_null() {
-                return ForegroundInfo { title: String::new(), exe: String::new() };
+                return ForegroundInfo { title: String::new(), exe: String::new(), class: String::new() };
             }
             ForegroundInfo {
                 title: title_of(hwnd),
                 exe: exe_of(hwnd),
+                class: class_of(hwnd),
             }
         }
     }
@@ -309,7 +323,7 @@ mod imp {
     pub fn start_hooks() -> Result<(), String> { Ok(()) }
     pub fn stop_hooks() {}
     pub fn foreground_info() -> ForegroundInfo {
-        ForegroundInfo { title: String::new(), exe: String::new() }
+        ForegroundInfo { title: String::new(), exe: String::new(), class: String::new() }
     }
     pub fn activate_app(_exe: &str) -> bool { false }
     pub fn activate_title(_keyword: &str) -> bool { false }

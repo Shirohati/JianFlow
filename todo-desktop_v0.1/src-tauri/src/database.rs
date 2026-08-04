@@ -849,6 +849,9 @@ impl Database {
         if let Some(v) = updates.get("pomodoro_lock_whitelist").and_then(|v| v.as_str()) {
             data.settings.pomodoro_lock_whitelist = v.to_string();
         }
+        if let Some(v) = updates.get("pomodoro_lock_style").and_then(|v| v.as_str()) {
+            data.settings.pomodoro_lock_style = v.to_string();
+        }
         if let Some(v) = updates.get("board_collapsed_groups").and_then(|v| v.as_str()) {
             data.settings.board_collapsed_groups = v.to_string();
         }

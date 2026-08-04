@@ -136,12 +136,14 @@ export interface AppSettings {
   show_secondary_todos: boolean;
   pomodoro_lock_enabled: boolean;
   pomodoro_lock_whitelist: string;
+  pomodoro_lock_style: string;
   board_collapsed_groups: string;
 }
 
 export interface ForegroundInfo {
   title: string;
   exe: string;
+  class: string;
 }
 
 export const lockApi = {
