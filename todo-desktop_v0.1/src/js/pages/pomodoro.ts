@@ -6,8 +6,7 @@ import { toast } from '../components/toast';
 import type { PomodoroPreset, TimeType, Goal, Countdown, AppSettings, TimeRecord } from '../api';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { playComplete, playMilestone, playLockWarn } from '../audio';
-import { triggerConfetti, triggerScreenFlash } from '../confetti';
+import { feedbackSound, feedbackBurst, feedbackFlash } from '../feedback';
 
 function icon(name: string, attrs: string = ''): string {
   return `<i data-lucide="${name}" ${attrs}></i>`;
@@ -261,7 +260,7 @@ function checkForeground(info: ForegroundInfo): void {
       overlay?.classList.add('pomo-lock-overlay--warn');
       setTimeout(() => overlay?.classList.remove('pomo-lock-overlay--warn'), 1400);
       const s = store.get<AppSettings>('settings');
-      if (s?.feedback_sound_enabled) playLockWarn();
+      if (s?.feedback_sound_enabled) feedbackSound('lock-warn');
     }
   } else {
     lockWarned = false;
@@ -640,10 +639,10 @@ export const pomodoroPage = {
       const goals = store.get<Goal[]>('goals');
       const dailyGoal = goals?.find(g => g.goal_type === 'daily');
       if (dailyGoal && s && newTotal >= dailyGoal.target_minutes && oldTotal < dailyGoal.target_minutes) {
-        if (s.feedback_sound_enabled) playComplete();
+        if (s.feedback_sound_enabled) feedbackSound('goal-reached');
         if (s.feedback_confetti_enabled) {
-          triggerConfetti(120);
-          triggerScreenFlash();
+          feedbackBurst('goal-reached');
+          feedbackFlash();
         }
       }
     } else if (wasRunning) {
@@ -690,8 +689,8 @@ export const pomodoroPage = {
           const typeName = pomoState.timeType;
           pomodoroPage.stopTick();
           const s = store.get<AppSettings>('settings');
-          if (s?.feedback_sound_enabled) playComplete();
-          if (s?.feedback_confetti_enabled) triggerConfetti();
+          if (s?.feedback_sound_enabled) feedbackSound('pomo-done');
+          if (s?.feedback_confetti_enabled) feedbackBurst('pomo-done');
           pomodoroPage.stop();
           toast.success(`${typeName ?? '番茄钟'} 时间到！`);
           return;
@@ -702,8 +701,8 @@ export const pomodoroPage = {
         const s = store.get<AppSettings>('settings');
         const interval = s?.feedback_milestone_interval ?? 25;
         if (interval > 0 && pomoState.elapsedSeconds % (interval * 60) === 0) {
-          if (s?.feedback_sound_enabled) playMilestone();
-          if (s?.feedback_confetti_enabled) triggerConfetti(50);
+          if (s?.feedback_sound_enabled) feedbackSound('milestone');
+          if (s?.feedback_confetti_enabled) feedbackBurst('milestone');
         }
       }
 

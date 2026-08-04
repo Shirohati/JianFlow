@@ -5,8 +5,7 @@ import { initIcons } from '../icons';
 import { history } from '../history';
 import { toast } from '../components/toast';
 import type { TaskItem, Category, Connection, AppSettings } from '../api';
-import { playTaskPop } from '../audio';
-import { triggerBurst } from '../confetti';
+import { feedbackSound, feedbackBurst } from '../feedback';
 
 function icon(name: string, attrs: string = ''): string {
   return `<i data-lucide="${name}" ${attrs}></i>`;
@@ -1179,8 +1178,8 @@ export const boardPage = {
     const rect = el?.getBoundingClientRect();
     const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
     const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-    if (s?.feedback_task_sound_enabled) playTaskPop();
-    if (s?.feedback_task_confetti_enabled) triggerBurst(x, y);
+    if (s?.feedback_task_sound_enabled) feedbackSound('task-done');
+    if (s?.feedback_task_confetti_enabled) feedbackBurst('task-done', x, y);
   },
 
   async quickSub(id: string, action: string): Promise<void> {

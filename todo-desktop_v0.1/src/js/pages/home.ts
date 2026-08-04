@@ -5,8 +5,7 @@ import { utils } from '../utils';
 import { initIcons } from '../icons';
 import { toast } from '../components/toast';
 import type { TaskItem, Category, AppSettings } from '../api';
-import { playTaskPop, playStepTick } from '../audio';
-import { triggerBurst, triggerInhale } from '../confetti';
+import { feedbackSound, feedbackBurst } from '../feedback';
 
 function icon(name: string, attrs: string = ''): string {
   return `<i data-lucide="${name}" ${attrs}></i>`;
@@ -1693,14 +1692,14 @@ export const homePage = {
     toast.success(newStatus === 'completed' ? '已完成' : '已恢复待办');
     if (newStatus === 'completed') {
       const s = store.get<AppSettings>('settings');
-      if (s?.feedback_task_sound_enabled) playTaskPop();
+      if (s?.feedback_task_sound_enabled) feedbackSound('task-done');
       const wrap = document.querySelector(`.task-wrap[data-id="${id}"]`) as HTMLElement | null;
       if (s?.feedback_task_confetti_enabled && wrap) {
         const btn = wrap.querySelector('.task-toggle') as HTMLElement | null;
         const rect = btn?.getBoundingClientRect();
         const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
         const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-        triggerInhale(x, y);
+        feedbackBurst('task-done-inhale', x, y);
         // 以勾选按钮为湮灭收缩原点
         if (rect) {
           const wrapRect = wrap.getBoundingClientRect();
@@ -1777,13 +1776,13 @@ export const homePage = {
     await taskApi.update(parentId, { steps });
     if (cur && !cur.done) {
       const s = store.get<AppSettings>('settings');
-      if (s?.feedback_task_sound_enabled) playStepTick();
+      if (s?.feedback_task_sound_enabled) feedbackSound('step-tick');
       if (s?.feedback_task_confetti_enabled) {
         const btn = document.querySelector(`.task-step-toggle[data-step="${stepId}"]`) as HTMLElement | null;
         const rect = btn?.getBoundingClientRect();
         const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
         const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-        triggerBurst(x, y, 6);
+        feedbackBurst('step-tick', x, y);
       }
     }
     await homePage.render();
@@ -1833,8 +1832,8 @@ export const homePage = {
     const rect = btn?.getBoundingClientRect();
     const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
     const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-    if (s?.feedback_task_sound_enabled) playTaskPop();
-    if (s?.feedback_task_confetti_enabled) triggerBurst(x, y);
+    if (s?.feedback_task_sound_enabled) feedbackSound('task-done');
+    if (s?.feedback_task_confetti_enabled) feedbackBurst('task-done', x, y);
   },
 
   async deleteTodo(id: string): Promise<void> {

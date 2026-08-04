@@ -6,7 +6,7 @@ function getCtx(): AudioContext {
   return audioCtx;
 }
 
-function playTones(notes: { freq: number; start: number; dur: number; vol?: number }[], type: OscillatorType = 'sine') {
+export function playTones(notes: { freq: number; start: number; dur: number; vol?: number }[], type: OscillatorType = 'sine') {
   const ctx = getCtx();
   const now = ctx.currentTime;
   for (const n of notes) {
@@ -24,58 +24,18 @@ function playTones(notes: { freq: number; start: number; dur: number; vol?: numb
   }
 }
 
-export function playComplete() {
-  playTones([
-    { freq: 523.25, start: 0, dur: 0.4 },
-    { freq: 659.25, start: 0.12, dur: 0.4 },
-    { freq: 783.99, start: 0.24, dur: 0.45 },
-    { freq: 1046.5, start: 0.36, dur: 0.6, vol: 0.35 },
-  ]);
-}
-
-export function playMilestone() {
-  playTones([
-    { freq: 523.25, start: 0, dur: 0.25, vol: 0.2 },
-    { freq: 659.25, start: 0.1, dur: 0.25, vol: 0.22 },
-    { freq: 783.99, start: 0.2, dur: 0.35, vol: 0.25 },
-  ], 'triangle');
-}
-
-export function playTaskPop() {
+export function playSlide(spec: { from: number; to: number; dur: number; vol: number }) {
   const ctx = getCtx();
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(1000, now);
-  osc.frequency.exponentialRampToValueAtTime(600, now + 0.12);
-  gain.gain.setValueAtTime(0.12, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+  osc.frequency.setValueAtTime(spec.from, now);
+  osc.frequency.exponentialRampToValueAtTime(spec.to, now + spec.dur);
+  gain.gain.setValueAtTime(spec.vol, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + spec.dur);
   osc.connect(gain);
   gain.connect(ctx.destination);
   osc.start(now);
-  osc.stop(now + 0.15);
-}
-
-export function playStepTick() {
-  const ctx = getCtx();
-  const now = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(880, now);
-  osc.frequency.exponentialRampToValueAtTime(660, now + 0.1);
-  gain.gain.setValueAtTime(0.05, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(now);
-  osc.stop(now + 0.12);
-}
-
-export function playLockWarn() {
-  playTones([
-    { freq: 330, start: 0, dur: 0.18, vol: 0.18 },
-    { freq: 262, start: 0.2, dur: 0.25, vol: 0.2 },
-  ]);
+  osc.stop(now + spec.dur);
 }
