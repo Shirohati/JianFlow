@@ -48,6 +48,18 @@ export const settingsPage = {
     container.innerHTML = `
       <h2 class="page-title">${icon('settings')} 设置</h2>
 
+      <div class="settings-layout">
+        <aside class="settings-nav">
+          <button class="settings-nav__item active" type="button" data-group="appearance">${icon('palette', 'size="14"')} 外观</button>
+          <button class="settings-nav__item" type="button" data-group="behavior">${icon('zap', 'size="14"')} 行为</button>
+          <button class="settings-nav__item" type="button" data-group="feedback">${icon('party-popper', 'size="14"')} 反馈</button>
+          <button class="settings-nav__item" type="button" data-group="manage">${icon('sliders-horizontal', 'size="14"')} 管理</button>
+          <button class="settings-nav__item" type="button" data-group="goals">${icon('target', 'size="14"')} 目标</button>
+          <button class="settings-nav__item" type="button" data-group="data">${icon('database', 'size="14"')} 数据</button>
+        </aside>
+        <div class="settings-content">
+
+      <div class="settings-group active" data-group="appearance">
       <div class="settings-section">
         <h3 class="settings-section-title">${icon('palette', 'size="14"')} 外观</h3>
         <div class="settings-row">
@@ -85,7 +97,9 @@ export const settingsPage = {
           </select>
         </div>
       </div>
+      </div>
 
+      <div class="settings-group" data-group="behavior">
       <div class="settings-section">
         <h3 class="settings-section-title">${icon('zap', 'size="14"')} 行为</h3>
         <div class="settings-row">
@@ -114,7 +128,9 @@ export const settingsPage = {
           </label>
         </div>
       </div>
+      </div>
 
+      <div class="settings-group" data-group="feedback">
       <div class="settings-section">
         <h3 class="settings-section-title">${icon('party-popper', 'size="14"')} 反馈</h3>
         <div class="settings-row">
@@ -151,7 +167,9 @@ export const settingsPage = {
           <span style="font-size:var(--text-xs);color:var(--text-lighter);margin-left:var(--space-1)">0=关闭</span>
         </div>
       </div>
+      </div>
 
+      <div class="settings-group" data-group="manage">
       <div class="settings-section">
         <h3 class="settings-section-title">${icon('tag', 'size="14"')} 分类管理</h3>
         <div class="settings-categories" id="settingsCategories">
@@ -224,7 +242,9 @@ export const settingsPage = {
           <button class="btn btn--primary btn--sm" id="lockWhitelistSaveBtn" style="align-self:flex-start">${icon('save', 'size="14"')} 保存白名单</button>
         </div>
       </div>
+      </div>
 
+      <div class="settings-group" data-group="goals">
       <div class="settings-section">
         <h3 class="settings-section-title">${icon('target', 'size="14"')} 学习目标</h3>
         <div class="settings-row">
@@ -297,7 +317,9 @@ export const settingsPage = {
           <button class="btn btn--sm" id="detailImportBtn">${icon('file-plus', 'size="14"')} 逐条导入</button>
         </div>
       </div>
+      </div>
 
+      <div class="settings-group" data-group="data">
       <div class="settings-section">
         <h3 class="settings-section-title">${icon('database', 'size="14"')} 数据</h3>
         <div class="settings-row">
@@ -317,6 +339,10 @@ export const settingsPage = {
           <span class="settings-label">清空所有数据</span>
           <button class="btn btn--danger btn--sm" id="resetDataBtn">${icon('trash-2', 'size="14"')} 清空</button>
         </div>
+      </div>
+      </div>
+
+      </div>
       </div>
     `;
 
@@ -351,6 +377,17 @@ export const settingsPage = {
   },
 
   bindEvents(container: Element): void {
+    container.querySelectorAll('.settings-nav__item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const group = (btn as HTMLElement).dataset.group!;
+        container.querySelectorAll('.settings-nav__item').forEach(b => b.classList.remove('active'));
+        (btn as HTMLElement).classList.add('active');
+        container.querySelectorAll('.settings-group').forEach(g => {
+          g.classList.toggle('active', (g as HTMLElement).dataset.group === group);
+        });
+      });
+    });
+
     container.querySelectorAll('.settings-select').forEach(el => {
       el.addEventListener('change', async (e) => {
         const key = (el as HTMLElement).dataset.key!;
