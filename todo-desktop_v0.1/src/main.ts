@@ -1,7 +1,13 @@
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/components.css';
-import './styles/pages.css';
+import './styles/pages/common.css';
+import './styles/pages/home.css';
+import './styles/pages/board.css';
+import './styles/pages/pomodoro.css';
+import './styles/pages/report.css';
+import './styles/pages/calendar.css';
+import './styles/pages/settings.css';
 import './styles/dark.css';
 import { store } from './js/store';
 import { router } from './js/router';

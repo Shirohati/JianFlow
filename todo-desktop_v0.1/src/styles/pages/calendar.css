@@ -1,0 +1,100 @@
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.cal-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cal-month-label {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--text);
+  min-width: 120px;
+  text-align: center;
+}
+
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-lighter);
+  margin-bottom: var(--space-1);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.cal-cell {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  position: relative;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-weight: var(--weight-medium);
+  color: var(--text-light);
+}
+
+.cal-cell:hover {
+  background: var(--bg2);
+}
+
+.cal-cell--empty {
+  cursor: default;
+}
+
+.cal-cell--empty:hover {
+  background: transparent;
+}
+
+.cal-cell--today {
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.cal-cell--today:hover {
+  background: var(--color-primary-lighter);
+}
+
+.cal-cell-day {
+  z-index: 1;
+}
+
+.cal-cell-minutes {
+  font-size: 8px;
+  color: var(--text-lighter);
+  font-variant-numeric: tabular-nums;
+  z-index: 1;
+}
+
+.cal-cell-heat {
+  position: absolute;
+  inset: 3px;
+  border-radius: var(--radius-xs);
+  transition: opacity var(--transition-fast);
+}
+
+.cal-cell-heat--1 { background: var(--heat-1); }
+.cal-cell-heat--2 { background: var(--heat-2); }
+.cal-cell-heat--3 { background: var(--heat-3); }
+.cal-cell-heat--4 { background: var(--heat-4); color: #fff; }
+.cal-cell-heat--5 { background: var(--heat-5); color: #fff; }
+.cal-cell-heat--6 { background: var(--heat-6); color: #fff; }
+
