@@ -228,6 +228,7 @@ pub struct AppSettings {
     pub pomodoro_lock_enabled: bool,
     pub pomodoro_lock_whitelist: String,
     pub pomodoro_lock_style: String,
+    pub app_style: String,
     pub board_collapsed_groups: String,
 }
 
@@ -273,6 +274,7 @@ impl Default for AppSettings {
             pomodoro_lock_enabled: false,
             pomodoro_lock_whitelist: "[]".into(),
             pomodoro_lock_style: "default".into(),
+            app_style: "default".into(),
             board_collapsed_groups: "[]".into(),
         }
     }
@@ -329,6 +331,7 @@ impl Default for AppData {
                 pomodoro_lock_enabled: false,
                 pomodoro_lock_whitelist: "[]".into(),
                 pomodoro_lock_style: "default".into(),
+                app_style: "default".into(),
                 board_collapsed_groups: "[]".into(),
             },
             daily_logs: HashMap::new(),

@@ -1,4 +1,5 @@
 import { store } from '../store';
+import { applyAppStyle } from '../styles';
 import { settingsApi, categoryApi, statsApi, timeRecordApi, timeTypeApi, presetApi, goalApi, countdownApi } from '../api';
 import { initIcons, icon } from '../icons';
 import { toast } from '../components/toast';
@@ -63,12 +64,11 @@ export const settingsPage = {
       <div class="settings-section">
         <h3 class="settings-section-title">${icon('palette', 'size="14"')} 外观</h3>
         <div class="settings-row">
-          <span class="settings-label">主题</span>
-          <select class="input settings-select" data-key="theme">
-            <option value="warm" ${settings.theme === 'warm' ? 'selected' : ''}>暖色</option>
-            <option value="cool" ${settings.theme === 'cool' ? 'selected' : ''}>冷色</option>
-            <option value="minimal" ${settings.theme === 'minimal' ? 'selected' : ''}>简约</option>
-            <option value="dark" ${settings.theme === 'dark' ? 'selected' : ''}>暗色</option>
+          <span class="settings-label">界面风格</span>
+          <select class="input settings-select" data-key="app_style">
+            <option value="default" ${settings.app_style === 'default' ? 'selected' : ''}>经典</option>
+            <option value="pop" ${settings.app_style === 'pop' ? 'selected' : ''}>波普</option>
+            <option value="swiss" ${settings.app_style === 'swiss' ? 'selected' : ''}>瑞士</option>
           </select>
         </div>
         <div class="settings-row">
@@ -394,8 +394,8 @@ export const settingsPage = {
         const value = (e.target as HTMLSelectElement).value;
         const isNumber = key === 'note_spacing';
         await settingsApi.update({ [key]: isNumber ? parseInt(value) : value } as Partial<AppSettings>);
-        if (key === 'theme') {
-          document.documentElement.setAttribute('data-theme', value);
+        if (key === 'app_style') {
+          applyAppStyle(value);
         }
         if (key === 'board_bg_style') {
           document.documentElement.setAttribute('data-board-bg', value);

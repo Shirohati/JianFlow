@@ -1555,7 +1555,7 @@
 }
 
 
-[data-theme="warm"] .board-canvas-wrap {
+.board-canvas-wrap {
   background:
     radial-gradient(ellipse at 20% 50%, rgba(180, 140, 100, 0.06) 0%, transparent 50%),
     radial-gradient(ellipse at 80% 20%, rgba(160, 120, 80, 0.04) 0%, transparent 50%),
@@ -1650,15 +1650,4 @@
     linear-gradient(var(--board-grid-color) 1px, transparent 1px),
     linear-gradient(90deg, var(--board-grid-color) 1px, transparent 1px);
   background-size: var(--board-grid-size) var(--board-grid-size);
-}
-[data-theme="dark"][data-board-bg="glass"] .board-canvas-wrap {
-  background: rgba(15, 17, 23, 0.5);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-}
-[data-theme="dark"][data-board-bg="cork"] .board-canvas-wrap {
-  background:
-    radial-gradient(ellipse at 30% 40%, rgba(99, 102, 241, 0.04) 0%, transparent 50%),
-    radial-gradient(ellipse at 70% 60%, rgba(16, 185, 129, 0.03) 0%, transparent 50%),
-    var(--board-bg);
 }

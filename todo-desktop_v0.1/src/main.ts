@@ -8,10 +8,13 @@ import './styles/pages/pomodoro.css';
 import './styles/pages/report.css';
 import './styles/pages/calendar.css';
 import './styles/pages/settings.css';
-import './styles/dark.css';
+import './styles/styles/default.css';
+import './styles/styles/pop.css';
+import './styles/styles/swiss.css';
 import { store } from './js/store';
 import { router } from './js/router';
 import { settingsApi } from './js/api';
+import { applyAppStyle } from './js/styles';
 import { initIcons } from './js/icons';
 import { utils } from './js/utils';
 import { homePage } from './js/pages/home';
@@ -27,7 +30,7 @@ async function init() {
   store.set('settings', settings);
   store.set('currentDate', utils.getTodayStr());
 
-  document.documentElement.setAttribute('data-theme', settings.theme);
+  applyAppStyle(settings.app_style || 'default');
 
   router.init();
   router.onPageEnter('home', () => homePage.init());

@@ -137,6 +137,7 @@ export interface AppSettings {
   pomodoro_lock_enabled: boolean;
   pomodoro_lock_whitelist: string;
   pomodoro_lock_style: string;
+  app_style: string;
   board_collapsed_groups: string;
 }
 
